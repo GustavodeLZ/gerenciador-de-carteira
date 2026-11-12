@@ -11,7 +11,7 @@ create function auth.jwt() returns jsonb language sql stable as $$ select jsonb_
 grant usage on schema public, auth to anon, authenticated, service_role;
 grant execute on all functions in schema auth to authenticated, anon;
 `);
-for (const f of ["0001_init.sql","0002_moeda_e_notas.sql"]) await db.exec(fs.readFileSync(new URL("../migrations/"+f, import.meta.url),"utf8"));
+for (const f of ["0001_init.sql","0002_moeda_e_notas.sql","0003_importacao_b3.sql"]) await db.exec(fs.readFileSync(new URL("../migrations/"+f, import.meta.url),"utf8"));
 // Sem permissões automáticas: simula "Automatically expose new tables" DESLIGADO.
 // Tudo o que funciona aqui vem dos GRANTs explícitos das migrações.
 const ok=(m)=>console.log("OK  ",m), bad=(m)=>{console.log("FAIL",m);process.exitCode=1};
@@ -70,3 +70,10 @@ JSON.stringify(r.rows).includes('"moeda":"USD"')?ok("rotina diária recebe ticke
 // permissões explícitas
 try{ await as(u1,'aal2',`select * from emails_permitidos`); bad("allowlist acessível"); }catch{ ok("allowlist sem permissão pela API"); }
 await db.exec(`set role anon`); try{ await db.query(`select * from cotacoes`); bad("anon leu cotações"); }catch{ ok("anônimo não lê nada"); } await db.exec(`reset role`);
+
+// 0003: proventos com origem
+await as(u1,'aal2',`insert into proventos(ativo_id,tipo,data_pagamento,valor_total,origem) values($1,'rendimento','2026-11-10',6.83,'b3m:x')`,[a1]);
+r=await as(u1,'aal2',`insert into proventos(ativo_id,tipo,data_pagamento,valor_total,origem) values($1,'rendimento','2026-11-10',6.83,'b3m:x') on conflict (user_id,origem) do nothing returning id`,[a1]);
+r.rows.length===0?ok("mesmo provento da B3 não é importado duas vezes"):bad("duplicou provento");
+await as(u1,'aal2',`insert into proventos(ativo_id,tipo,data_pagamento,valor_total) values($1,'dividendo','2026-11-10',1),($1,'dividendo','2026-11-10',1)`,[a1]);
+ok("proventos manuais (sem origem) não conflitam");

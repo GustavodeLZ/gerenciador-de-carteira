@@ -77,8 +77,11 @@ const EPS = 1e-9;
  * da própria operação (ou `fxPadrao` quando a operação não tem câmbio).
  */
 export function aplicarOperacoes(ops: Operacao[], fxPadrao = 1) {
+  // No mesmo dia, entradas (compra, bonificação, desdobramento) antes das saídas,
+  // para uma venda não ser descartada por vir antes da compra do mesmo pregão.
+  const ordem: Record<TipoOperacao, number> = { compra: 0, bonificacao: 1, desdobramento: 2, grupamento: 3, venda: 4 };
   const ordenadas = [...ops].sort(
-    (a, b) => a.data.localeCompare(b.data) || (a.criado_em ?? "").localeCompare(b.criado_em ?? ""),
+    (a, b) => a.data.localeCompare(b.data) || ordem[a.tipo] - ordem[b.tipo] || (a.criado_em ?? "").localeCompare(b.criado_em ?? ""),
   );
   let qtd = 0, custo = 0, custoBRL = 0, realizado = 0;
   for (const op of ordenadas) {

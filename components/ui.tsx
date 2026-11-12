@@ -28,10 +28,10 @@ export function Vazio({ titulo, children }: { titulo: string; children?: React.R
 export function CarteiraVazia() {
   return (
     <Vazio titulo="Sua carteira está vazia">
-      <p>Registre sua primeira compra ou importe o backup do app anterior.</p>
+      <p>Importe seu histórico da B3 (Excel) ou uma nota de corretagem, ou registre a primeira compra.</p>
       <div className="row" style={{ justifyContent: "center", marginTop: 12 }}>
-        <Link className="btn primary" href="/operacoes#nova">+ Registrar operação</Link>
-        <Link className="btn" href="/config#importar">Importar backup</Link>
+        <Link className="btn primary" href="/importar">Importar da B3</Link>
+        <Link className="btn" href="/operacoes#nova">+ Registrar operação</Link>
       </div>
     </Vazio>
   );

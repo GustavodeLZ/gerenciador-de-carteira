@@ -89,3 +89,8 @@ test("venda em dólar baixa o custo em reais proporcionalmente", () => {
   ]);
   perto(r.quantidade, 1); perto(r.custo, 100); perto(r.custoBRL, 500); perto(r.lucroRealizado, 20);
 });
+
+test("compra e venda no mesmo dia: a venda não é perdida", () => {
+  const r = aplicarOperacoes([op("venda", "2026-01-10", 5, 12), op("compra", "2026-01-10", 10, 10)]);
+  perto(r.quantidade, 5); perto(r.lucroRealizado, 10);
+});

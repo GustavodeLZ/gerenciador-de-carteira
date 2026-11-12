@@ -18,8 +18,8 @@ const csp = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  // Upload de notas em PDF (limite de 5 MB por arquivo + folga)
-  experimental: { serverActions: { bodySizeLimit: "6mb" } },
+  // Upload de notas (PDF) e relatórios da B3 (até 3 planilhas de 5 MB)
+  experimental: { serverActions: { bodySizeLimit: "16mb" } },
   async headers() {
     return [
       {

@@ -4,7 +4,6 @@ import { carregarCarteira } from "@/lib/dados";
 import { CLASSES, M, MP, Q, dataBR } from "@/lib/carteira";
 import { adicionarOperacao, excluirOperacao } from "@/app/actions";
 import { ActionForm, ActionButton, SeletorAtivo } from "@/components/forms";
-import { NotaUpload } from "@/components/nota-upload";
 
 const NOME_OP: Record<string, string> = { compra: "Compra", venda: "Venda", desdobramento: "Desdobramento", grupamento: "Grupamento", bonificacao: "Bonificação" };
 
@@ -21,7 +20,11 @@ export default async function Operacoes({ searchParams }: { searchParams: Promis
 
   return (
     <div className="grid">
-      <NotaUpload classes={CLASSES} segmentos={c.segmentos.map((s) => ({ id: s.id, nome: s.nome }))} />
+      <div className="card note row" style={{ border: 0 }}>
+        <span>Tem o histórico na B3 ou uma nota de corretagem em PDF?</span>
+        <span className="spacer" />
+        <Link className="btn sm" href="/importar">Importar →</Link>
+      </div>
       <div className="card" id="nova">
         <h2>Registrar operação</h2>
         <ActionForm action={adicionarOperacao} className="form">

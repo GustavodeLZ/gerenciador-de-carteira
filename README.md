@@ -22,7 +22,8 @@ Você tem GitHub e Supabase do trabalho. **Em cada passo abaixo, confira no cant
      - ⬜ **Automatically expose new tables** — **desligado**. O script SQL concede só as permissões necessárias.
      - ✅ **Enable automatic RLS** — ligado (rede de segurança para tabelas futuras).
 2. *SQL Editor* → *New query* → cole todo o conteúdo de `supabase/migrations/0001_init.sql` → *Run*.
-   Depois, numa nova query, faça o mesmo com `supabase/migrations/0002_moeda_e_notas.sql`.
+   Depois, numa nova query, faça o mesmo com `0002_moeda_e_notas.sql` e `0003_importacao_b3.sql`.
+   (Ou cole de uma vez o `supabase/setup-completo.sql`, que junta os três.)
 3. Na mesma tela, rode (com o **seu e-mail pessoal**):
    ```sql
    insert into public.emails_permitidos values ('seu-email@exemplo.com');
@@ -75,7 +76,7 @@ No Supabase, *Authentication → URL Configuration*:
 - **Cotações separadas da carteira:** a tabela de preços não tem nenhum dado pessoal.
 - **Cabeçalhos de segurança:** CSP, HSTS, bloqueio de iframe, sem indexação em buscadores.
 - **Rotina diária protegida** por `CRON_SECRET`.
-- **Testes:** `npm test` (cálculos e leitor de notas) e `npm run test:db` (27 verificações de RLS, permissões e duplicidade).
+- **Testes:** `npm test` (cálculos, leitor de notas e importação da B3) e `npm run test:db` (29 verificações de RLS, permissões e duplicidade).
 
 ### Recomendações
 - Use um gerenciador de senhas e ative 2FA também no GitHub, Supabase e Vercel pessoais.
@@ -98,9 +99,26 @@ Automáticas, seg–sex às 18h30 (horário de Brasília). Também há o botão 
 - O **valor atual em R$** usa a PTAX mais recente. A rentabilidade em R$ inclui a variação do dólar; a página do ativo mostra também a rentabilidade só em US$.
 - Para declaração de IR há regras específicas de conversão (ex.: origem dos recursos). O app é uma ferramenta de acompanhamento, não substitui a orientação de um contador.
 
+## Importar relatórios da B3 (Excel)
+
+Em *Importar → Relatórios da B3*. Na Área do Investidor da B3, baixe em Excel:
+- **Extratos → Negociação** (maior período possível): compras e vendas.
+- **Extratos → Movimentação** (maior período possível): proventos e eventos (desdobro, bonificação, subscrição, frações).
+- **Posição de Carteira**: confere as quantidades e traz renda fixa e Tesouro.
+
+O app mostra a conferência ativo por ativo antes de gravar:
+- **Mudanças de código** (ex.: TRPL4 → ISAE4) são detectadas e aplicadas — o histórico é juntado ao código novo.
+- Para **incorporações** que o app não detecta, escolha "ou virou →" na linha do código antigo.
+- Diferenças que sobrarem viram um **ajuste de conciliação**: entrada pelo preço de fechamento (editável) ou saída pelo preço médio (sem lucro/prejuízo). Em incorporações, o ajuste é por fator e mantém o custo total.
+- **Renda fixa e Tesouro** vêm da posição. A B3 não informa o valor aplicado de CDB/LCI: o custo entra igual ao valor atual.
+- Títulos que **saíram da posição** em uma importação futura podem ser registrados como resgatados.
+
+Reimportar é seguro: cada linha tem um identificador e nada é duplicado (inclusive os ajustes).
+Não importe a B3 e lance as mesmas operações à mão — o app avisa quando um ativo já tem operações manuais.
+
 ## Importar nota de corretagem (PDF)
 
-Em *Operações → Importar nota*:
+Em *Importar → Nota de corretagem*:
 1. Envie o PDF (até 5 MB). Se tiver senha, o app pede.
 2. Confira a tabela: escolha a classe dos ativos novos e, se quiser, os segmentos.
 3. *Importar*. Linhas já importadas aparecem desmarcadas — não há risco de duplicar.
@@ -133,7 +151,7 @@ npm test && npm run test:db
 
 - Histórico diário do patrimônio e gráfico de evolução.
 - Comparação com CDI e Ibovespa (rentabilidade ponderada pelo tempo).
-- Leitor da nota da B3 (SINACOR) e do extrato da área do investidor.
+- Leitor da nota da B3 (SINACOR), para quem não usa os relatórios da Área do Investidor.
 - Proventos dos EUA a partir do extrato mensal (dividendos e imposto retido de 30%).
 - Cálculo de IR (isenção de R$ 20 mil em ações, DARF).
 - Para abrir a outros usuários: SMTP próprio para e-mails, termos de uso e política de privacidade (LGPD), cadastro com convite.

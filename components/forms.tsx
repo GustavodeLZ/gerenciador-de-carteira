@@ -98,7 +98,7 @@ export function SeletorAtivo({ ativos, classes, inicial }: { ativos: { id: strin
 
 export function Nav() {
   const path = usePathname();
-  const links = [["/", "Resumo"], ["/ativos", "Ativos"], ["/operacoes", "Operações"], ["/proventos", "Proventos"], ["/segmentos", "Segmentos"], ["/config", "Ajustes"]];
+  const links = [["/", "Resumo"], ["/ativos", "Ativos"], ["/operacoes", "Operações"], ["/proventos", "Proventos"], ["/segmentos", "Segmentos"], ["/importar", "Importar"], ["/config", "Ajustes"]];
   return (
     <nav className="tabs" aria-label="Seções">
       {links.map(([h, l]) => (
