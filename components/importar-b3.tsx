@@ -107,7 +107,8 @@ export function ImportarB3({ classes }: { classes: Classe[] }) {
         <>
           <p className="muted" style={{ marginTop: 0 }}>
             Na Área do Investidor da B3, baixe em Excel: <b>Extratos → Negociação</b>, <b>Extratos → Movimentação</b> (escolha o maior período possível)
-            e <b>Posição de Carteira</b>. Envie os três juntos.
+            e <b>Posição de Carteira</b>. Envie os três juntos. Se tiver, inclua também o <b>Relatório Histórico do myProfit</b> (.xlsx):
+            ele completa compras antigas que a B3 não registrou (de antes de 2019 ou de outra corretora).
           </p>
           <div className="form">
             <label className="f full">Arquivos .xlsx (até 4 MB no total)

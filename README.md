@@ -120,6 +120,7 @@ Em *Importar → Relatórios da B3*. Na Área do Investidor da B3, baixe em Exce
 - **Extratos → Negociação** (maior período possível): compras e vendas.
 - **Extratos → Movimentação** (maior período possível): proventos e eventos (desdobro, bonificação, subscrição, frações).
 - **Posição de Carteira**: confere as quantidades e traz renda fixa e Tesouro.
+- **Relatório Histórico do myProfit** (opcional, .xlsx): completa compras que a B3 não registrou (antes de 2019 ou de outra corretora). Só entra o que excede a Negociação da B3, com a nota "myProfit (não consta na Negociação da B3)". O cabeçalho do arquivo (nome e CPF) é ignorado.
 
 O app mostra a conferência ativo por ativo antes de gravar:
 - **Mudanças de código** (ex.: TRPL4 → ISAE4) são detectadas e aplicadas — o histórico é juntado ao código novo.
@@ -130,6 +131,22 @@ O app mostra a conferência ativo por ativo antes de gravar:
 
 Reimportar é seguro: cada linha tem um identificador e nada é duplicado (inclusive os ajustes).
 Não importe a B3 e lance as mesmas operações à mão — o app avisa quando um ativo já tem operações manuais.
+
+## Importar EUA (Inter / DriveWealth)
+
+Em *Importar → Ações e ETFs dos EUA*, envie juntos:
+- o **Relatório Histórico do myProfit** (.xlsx) — histórico de compras e vendas em dólar;
+- o **extrato mensal** da conta americana (PDF) — confere quantidades e custo e traz os dividendos (líquidos do imposto retido);
+- as **confirmações de operação** (PDF) de depois do extrato — as que já constam no myProfit são ignoradas.
+
+Diferenças contra o extrato viram um ajuste na data do extrato: compra pelo custo que falta (ou preço 0 para frações de reinvestimento/bonificação), ou venda pelo preço médio. Quando o extrato não traz o custo (ativo transferido), o app pede o **preço médio do app do Inter**. O câmbio de cada operação é a PTAX de venda do dia.
+
+## Ordem sugerida para montar a carteira com histórico
+
+1. **B3** (Negociação + Movimentação + Posição + myProfit).
+2. **EUA** (myProfit + extrato + confirmações).
+3. **Investidor10** só com Renda Fixa e Criptomoedas (o resto já veio do histórico), para valor aplicado de CDB/LCI e cripto.
+4. Daqui em diante: notas de corretagem, extratos mensais e novas importações da B3.
 
 ## Importar nota de corretagem (PDF)
 

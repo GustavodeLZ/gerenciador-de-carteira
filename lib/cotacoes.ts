@@ -74,9 +74,11 @@ export async function ptax(iso = dataSP()): Promise<{ data: string; valor: numbe
 /** PTAX para várias datas, com cache por chamada. */
 export async function ptaxDatas(datas: string[]) {
   const out = new Map<string, number>();
-  for (const d of [...new Set(datas)]) {
-    const r = await ptax(d);
-    if (r) out.set(d, r.valor);
+  const unicas = [...new Set(datas)];
+  for (let i = 0; i < unicas.length; i += 6) {
+    const parte = unicas.slice(i, i + 6);
+    const res = await Promise.all(parte.map((d) => ptax(d)));
+    res.forEach((r, j) => { if (r) out.set(parte[j], r.valor); });
   }
   return out;
 }

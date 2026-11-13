@@ -9,6 +9,8 @@ import { bancoCheio } from "@/lib/limites";
 import { lerArquivosB3, type ArquivosB3 } from "@/lib/b3/planilha";
 import { montarPlano, type Escolhas } from "@/lib/b3/montar";
 import { lerInvestidor10, ehCsvInvestidor10 } from "@/lib/investidor10";
+import { tentarMyProfit } from "@/lib/planilhas";
+import type { OpMyProfit } from "@/lib/myprofit";
 
 // A Vercel limita o corpo da requisição a 4,5 MB
 const MAX_TOTAL = 4 * 1024 * 1024;
@@ -16,7 +18,7 @@ const CLASSES = ["acao", "fii", "etf", "bdr", "renda_fixa", "tesouro", "cripto",
 const hash = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 32);
 const pedacos = <T,>(xs: T[], n: number) => Array.from({ length: Math.ceil(xs.length / n) }, (_, i) => xs.slice(i * n, i * n + n));
 
-async function lerForm(fd: FormData): Promise<{ dados: ArquivosB3 } | { erro: string }> {
+async function lerForm(fd: FormData): Promise<{ dados: ArquivosB3; myprofit: OpMyProfit[] } | { erro: string }> {
   const arquivos = fd.getAll("arquivos").filter((f): f is File => f instanceof File && f.size > 0);
   if (!arquivos.length) return { erro: "Escolha os arquivos .xlsx exportados da B3." };
   if (arquivos.length > 5) return { erro: "Envie no máximo 5 arquivos." };
@@ -27,11 +29,18 @@ async function lerForm(fd: FormData): Promise<{ dados: ArquivosB3 } | { erro: st
     if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) return { erro: `${f.name}: não é uma planilha .xlsx.` };
     lidos.push({ nome: f.name.slice(0, 100), bytes });
   }
-  const dados = await lerArquivosB3(lidos);
+  // o relatório do myProfit (opcional) completa compras que a B3 não registrou
+  const myprofit: OpMyProfit[] = [];
+  const daB3: typeof lidos = [];
+  for (const l of lidos) {
+    const mp = await tentarMyProfit(l.bytes);
+    if (mp) myprofit.push(...mp.ops); else daB3.push(l);
+  }
+  const dados = await lerArquivosB3(daB3);
   if (!dados.negociacao.length && !dados.movimentacao.length && !dados.posicao.length) {
     return { erro: "Nenhum relatório da B3 reconhecido. Use Negociação, Movimentação ou Posição exportados em Excel." };
   }
-  return { dados };
+  return { dados, myprofit: myprofit.filter((o) => o.moeda === "BRL" && o.classe !== "tesouro" && o.classe !== "cripto") };
 }
 
 const EscolhasSchema = z.object({
@@ -118,7 +127,7 @@ export async function previaB3(fd: FormData): Promise<PreviaB3 | { erro: string 
   const esc = escolhasDe(fd);
   const ajustesExistentes = await ajustesGravados(u.supabase);
   const inicial = await posicaoInicial(u.supabase);
-  const plano = montarPlano(lido.dados, { renomear: esc.renomear, precoAjuste: esc.precoAjuste, ajustesExistentes, ...inicial } satisfies Escolhas, dataSP());
+  const plano = montarPlano(lido.dados, { renomear: esc.renomear, precoAjuste: esc.precoAjuste, ajustesExistentes, ...inicial, complemento: lido.myprofit } satisfies Escolhas, dataSP());
 
   const tickers = [...plano.ativos.map((a) => a.ticker), ...plano.rendaFixa.map((r) => r.ticker)];
   const existentes = new Map<string, { id: string; classe: string }>();
@@ -183,7 +192,7 @@ export async function importarB3(fd: FormData): Promise<{ ok?: string; erro?: st
   const hoje = dataSP();
   const ajustesExistentes = await ajustesGravados(u.supabase);
   const inicial = await posicaoInicial(u.supabase);
-  const plano = montarPlano(lido.dados, { renomear: esc.renomear, precoAjuste: esc.precoAjuste, ajustesExistentes, ...inicial }, hoje);
+  const plano = montarPlano(lido.dados, { renomear: esc.renomear, precoAjuste: esc.precoAjuste, ajustesExistentes, ...inicial, complemento: lido.myprofit }, hoje);
   const sb = u.supabase;
   const excluir = new Set(esc.excluir);
   const semAjuste = new Set(esc.semAjuste);
@@ -374,4 +383,118 @@ export async function importarI10(fd: FormData): Promise<{ ok?: string; erro?: s
 
   revalidatePath("/", "layout");
   return { ok: `Posição inicial importada: ${n} ativo(s) em ${esc.data.split("-").reverse().join("/")}` + (ops.length - n ? ` · ${ops.length - n} já existiam` : "") + "." };
+}
+
+// ---------------------------------------------------------------------
+// EUA: myProfit + extrato mensal do Inter + confirmações
+// ---------------------------------------------------------------------
+import { linhasDoPdf } from "@/lib/notas/pdf";
+import { ehExtratoInter, lerExtratoInter, type ExtratoInter } from "@/lib/notas/extrato-inter";
+import { ehDriveWealth, lerDriveWealth } from "@/lib/notas/drivewealth";
+import { montarPlanoEUA, type PlanoEUA } from "@/lib/eua";
+import { ptaxDatas } from "@/lib/cotacoes";
+import type { OperacaoNota } from "@/lib/notas/tipos";
+
+async function lerEUA(fd: FormData) {
+  const arquivos = fd.getAll("arquivos").filter((f): f is File => f instanceof File && f.size > 0);
+  if (!arquivos.length) return { erro: "Envie o relatório do myProfit e o extrato do Inter." };
+  if (arquivos.reduce((s, f) => s + f.size, 0) > MAX_TOTAL) return { erro: "Os arquivos somam mais de 4 MB." };
+  const myprofit: OpMyProfit[] = [];
+  const extratos: ExtratoInter[] = [];
+  const confirmacoes: OperacaoNota[] = [];
+  const desconhecidos: string[] = [];
+  for (const f of arquivos.slice(0, 30)) {
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
+      const mp = await tentarMyProfit(bytes);
+      if (mp) myprofit.push(...mp.ops); else desconhecidos.push(f.name);
+    } else if (String.fromCharCode(...bytes.slice(0, 5)) === "%PDF-") {
+      try {
+        const l = await linhasDoPdf(bytes);
+        if (ehExtratoInter(l)) extratos.push(lerExtratoInter(l));
+        else if (ehDriveWealth(l)) confirmacoes.push(...lerDriveWealth(l).operacoes);
+        else desconhecidos.push(f.name);
+      } catch { desconhecidos.push(f.name); }
+    } else desconhecidos.push(f.name);
+  }
+  // o extrato mais recente é a referência; dividendos de todos os extratos
+  extratos.sort((a, b) => a.fim.localeCompare(b.fim));
+  const ref = extratos.at(-1) ?? null;
+  const extrato = ref ? { ...ref, dividendos: extratos.flatMap((e) => e.dividendos) } : null;
+  let pmInter: Record<string, number> = {};
+  try { pmInter = z.record(z.string().max(12), z.number().positive()).parse(JSON.parse(String(fd.get("pmInter") ?? "{}"))); } catch { pmInter = {}; }
+  const plano = montarPlanoEUA({ myprofit, confirmacoes, extrato, pmInter });
+  return { plano, desconhecidos, temMyProfit: myprofit.some((o) => o.moeda === "USD"), extratos: extratos.map((e) => e.fim) };
+}
+
+export type PreviaEUA = Omit<PlanoEUA, "ativos"> & {
+  ativos: (Omit<PlanoEUA["ativos"][number], "ops"> & { compras: number; vendas: number; existe: boolean })[];
+  desconhecidos: string[]; extratos: string[]; temMyProfit: boolean;
+};
+
+export async function previaEUA(fd: FormData): Promise<PreviaEUA | { erro: string }> {
+  const u = await userForAction(); if (!u) return { erro: "Sessão expirada. Entre de novo." };
+  const r = await lerEUA(fd); if ("erro" in r) return { erro: r.erro! };
+  if (!r.temMyProfit && !r.plano.ativos.length) return { erro: "Nenhuma operação dos EUA encontrada. Envie o relatório do myProfit e o extrato do Inter." };
+  const existentes = new Set<string>();
+  for (const parte of pedacos(r.plano.ativos.map((a) => a.ticker), 200)) {
+    const { data } = await u.supabase.from("ativos").select("ticker").in("ticker", parte);
+    for (const a of data ?? []) existentes.add(a.ticker as string);
+  }
+  return {
+    ...r.plano, desconhecidos: r.desconhecidos, extratos: r.extratos, temMyProfit: r.temMyProfit,
+    ativos: r.plano.ativos.map(({ ops, ...a }) => ({ ...a, compras: ops.filter((o) => o.tipo === "compra").length, vendas: ops.filter((o) => o.tipo === "venda").length, existe: existentes.has(a.ticker) })),
+  };
+}
+
+export async function importarEUA(fd: FormData): Promise<{ ok?: string; erro?: string }> {
+  const u = await userForAction(); if (!u) return { erro: "Sessão expirada. Entre de novo." };
+  if (await bancoCheio()) return { erro: "Banco de dados acima de 90% do limite gratuito (500 MB). Importação bloqueada." };
+  const r = await lerEUA(fd); if ("erro" in r) return { erro: r.erro! };
+  let excluir = new Set<string>();
+  try { excluir = new Set(z.array(z.string().max(12)).max(500).parse(JSON.parse(String(fd.get("excluir") ?? "[]")))); } catch { /* nenhum */ }
+  const sb = u.supabase;
+  const ativos = r.plano.ativos.filter((a) => !excluir.has(a.ticker));
+  const agora = new Date().toISOString();
+
+  const ids = new Map<string, string>();
+  for (const parte of pedacos(ativos.map((a) => a.ticker), 200)) {
+    const { data } = await sb.from("ativos").select("id,ticker").in("ticker", parte);
+    for (const a of data ?? []) ids.set(a.ticker as string, a.id as string);
+  }
+  const novos = ativos.filter((a) => !ids.has(a.ticker)).map((a) => ({ ticker: a.ticker, nome: a.nome, classe: a.classe, moeda: "USD" }));
+  for (const parte of pedacos(novos, 200)) {
+    const { data, error } = await sb.from("ativos").insert(parte).select("id,ticker");
+    if (error) return { erro: "Não foi possível criar os ativos. Tente de novo." };
+    for (const a of data ?? []) ids.set(a.ticker as string, a.id as string);
+  }
+
+  // câmbio (PTAX de venda) de cada data de operação
+  const todasOps = ativos.flatMap((a) => [...(r.plano.ativos.find((x) => x.ticker === a.ticker)?.ops ?? []), ...(a.ajuste ? [a.ajuste] : [])].map((o) => ({ t: a.ticker, o })));
+  const cambios = await ptaxDatas(todasOps.map((x) => x.o.data));
+  const linhas = todasOps.map(({ t, o }) => ({
+    ativo_id: ids.get(t)!, tipo: o.tipo, data: o.data, quantidade: o.quantidade, preco: o.preco, taxas: o.taxas,
+    origem: o.origem, nota: o.nota, cambio: cambios.get(o.data) ?? null,
+  }));
+  let n = 0;
+  for (const parte of pedacos(linhas, 500)) {
+    const { data, error } = await sb.from("operacoes").upsert(parte, { onConflict: "user_id,origem", ignoreDuplicates: true }).select("id");
+    if (error) return { erro: `Erro ao gravar operações (${n} gravadas). Tente de novo: as já gravadas não duplicam.` };
+    n += data?.length ?? 0;
+  }
+  const provs = ativos.flatMap((a) => a.proventos.map((p) => ({ ativo_id: ids.get(a.ticker)!, tipo: "dividendo", data_pagamento: p.data, valor_total: p.valor, origem: p.origem })))
+    .filter((p) => p.valor_total > 0);
+  let np = 0;
+  for (const parte of pedacos(provs, 500)) {
+    const { data } = await sb.from("proventos").upsert(parte, { onConflict: "user_id,origem", ignoreDuplicates: true }).select("id");
+    np += data?.length ?? 0;
+  }
+  // preço de mercado do extrato como cotação inicial
+  const cot = ativos.filter((a) => a.precoMercado && r.plano.dataExtrato).map((a) => ({ ticker: `US:${a.ticker}`, data: r.plano.dataExtrato!, fechamento: a.precoMercado!, atualizado_em: agora }));
+  if (cot.length) { try { await createAdminClient().from("cotacoes").upsert(cot, { onConflict: "ticker,data", ignoreDuplicates: true }); } catch { /* rotina diária */ } }
+
+  revalidatePath("/", "layout");
+  const semCambio = linhas.filter((l) => l.cambio == null).length;
+  return { ok: `EUA importado: ${n} operação(ões), ${np} dividendo(s), ${novos.length} ativo(s) novo(s).` +
+    (linhas.length - n ? ` ${linhas.length - n} já existiam.` : "") + (semCambio ? ` ${semCambio} sem PTAX do dia (usam o dólar atual).` : "") };
 }

@@ -4,14 +4,16 @@ import { CLASSES } from "@/lib/carteira";
 import { ImportarB3 } from "@/components/importar-b3";
 import { ImportarI10 } from "@/components/importar-i10";
 import { NotaUpload } from "@/components/nota-upload";
+import { ImportarEUA } from "@/components/importar-eua";
 
 export default async function Importar() {
   const { supabase } = await requireUser();
   const c = await carregarCarteira(supabase);
   return (
     <div className="grid">
-      <ImportarI10 nomesClasse={Object.fromEntries(CLASSES.map((c) => [c.id, c.nome]))} />
       <ImportarB3 classes={CLASSES} />
+      <ImportarEUA />
+      <ImportarI10 nomesClasse={Object.fromEntries(CLASSES.map((c) => [c.id, c.nome]))} />
       <NotaUpload classes={CLASSES} segmentos={c.segmentos.map((s) => ({ id: s.id, nome: s.nome }))} />
       <p className="faint small" style={{ margin: 0 }}>
         Importar de novo é seguro: cada linha tem um identificador e o que já foi importado é ignorado.

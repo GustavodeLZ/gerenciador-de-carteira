@@ -60,6 +60,11 @@ export type Escolhas = {
    */
   corte?: string;
   base?: Record<string, { qtd: number; pm: number }>;
+  /**
+   * Operações do myProfit em reais (opcional). Compras que não constam na
+   * Negociação da B3 completam a diferença antes de qualquer ajuste.
+   */
+  complemento?: { data: string; ticker: string; tipo: "compra" | "venda"; quantidade: number; preco: number; origem: string }[];
 };
 
 // =====================================================================
@@ -242,10 +247,13 @@ export function montarPlano(dados: ArquivosB3, escolhas: Escolhas = {}, hoje: st
   }
 
   // ---------- data de corte (posição inicial já gravada) ----------
-  if (escolhas.corte) {
-    const antes = brutos.filter((b) => b.op && b.op.data <= escolhas.corte!).length;
+  // Só para os ativos que estão na posição inicial
+  if (escolhas.corte && escolhas.base) {
+    const naBase = (t: string) => !!escolhas.base![t];
+    const corta = (b: (typeof brutos)[number]) => !!b.op && b.op.data <= escolhas.corte! && naBase(b.ticker);
+    const antes = brutos.filter(corta).length;
     if (antes) ignorados[`Operações até ${escolhas.corte.split("-").reverse().join("/")} (já na posição inicial)`] = antes;
-    for (let i = brutos.length - 1; i >= 0; i--) if (brutos[i].op && brutos[i].op!.data <= escolhas.corte) brutos.splice(i, 1);
+    for (let i = brutos.length - 1; i >= 0; i--) if (corta(brutos[i])) brutos.splice(i, 1);
   }
 
   // ---------- trocas de código ----------
@@ -274,6 +282,25 @@ export function montarPlano(dados: ArquivosB3, escolhas: Escolhas = {}, hoje: st
     if (b.prov) a.proventos.push(b.prov);
   }
 
+  // ---------- compras que só o myProfit tem (por dia/ativo/tipo, além do que a B3 registrou) ----------
+  const extras = new Map<string, OpPlano[]>();
+  if (escolhas.complemento?.length) {
+    const soma = (lista: { data: string; ticker: string; tipo: string; quantidade: number; preco: number }[]) => {
+      const m = new Map<string, { q: number; v: number }>();
+      for (const o of lista) { const k = [o.data, destino(o.ticker), o.tipo].join("|"); const x = m.get(k) ?? { q: 0, v: 0 }; x.q += o.quantidade; x.v += o.quantidade * o.preco; m.set(k, x); }
+      return m;
+    };
+    const b3 = soma(brutos.filter((b) => b.op && b.op.nota === "B3 · Negociação").map((b) => ({ ...b.op!, ticker: b.ticker })));
+    for (const [k, x] of soma(escolhas.complemento.filter((o) => o.tipo === "compra"))) {
+      const falta = Math.round((x.q - (b3.get(k)?.q ?? 0)) * 1e8) / 1e8;
+      if (falta <= 1e-8) continue;
+      const [data, ticker, tipo] = k.split("|");
+      if (escolhas.corte && escolhas.base?.[ticker] && data <= escolhas.corte) continue;
+      if (!extras.has(ticker)) extras.set(ticker, []);
+      extras.get(ticker)!.push({ origem: `mpc:${hash(k + "|" + falta)}`, data, tipo: tipo as "compra", quantidade: falta, preco: x.v / x.q, nota: "myProfit (não consta na Negociação da B3)" });
+    }
+  }
+
   // ---------- quantidades e ajustes ----------
   for (const a of ativos.values()) {
     const b = escolhas.base?.[a.ticker];
@@ -284,7 +311,21 @@ export function montarPlano(dados: ArquivosB3, escolhas: Escolhas = {}, hoje: st
     a.qtdCalculada = Math.round(r.quantidade * 1e8) / 1e8;
     a.precoMedio = r.precoMedio;
     const ja = escolhas.ajustesExistentes?.[a.ticker] ?? 0;
-    const dif = Math.round((a.qtdB3 - a.qtdCalculada - ja) * 1e8) / 1e8;
+    let dif = Math.round((a.qtdB3 - a.qtdCalculada - ja) * 1e8) / 1e8;
+    // completa com compras do myProfit que a B3 não registrou, sem passar da diferença
+    if (dif > 1e-8 && extras.has(a.ticker) && dados.posicao.length) {
+      let usado = 0;
+      for (const o of extras.get(a.ticker)!.sort((x, y) => x.data.localeCompare(y.data))) {
+        if (usado + o.quantidade > dif + 1e-8) continue;
+        a.ops.push(o); usado += o.quantidade;
+      }
+      if (usado > 0) {
+        const r2 = aplicarOperacoes([...baseOp, ...a.ops.map((o, i) => ({ ...o, id: String(i), ativo_id: a.ticker, taxas: 0, criado_em: String(i + 1).padStart(6, "0") }) as Operacao)]);
+        a.qtdCalculada = Math.round(r2.quantidade * 1e8) / 1e8;
+        a.precoMedio = r2.precoMedio;
+        dif = Math.round((a.qtdB3 - a.qtdCalculada - ja) * 1e8) / 1e8;
+      }
+    }
     if (!dados.posicao.length || Math.abs(dif) < 1e-6) continue;
     if (a.incorporou.length && a.qtdCalculada > 0 && a.qtdB3 > 0 && ja === 0) {
       // Incorporação com proporção diferente de 1:1: troca a quantidade mantendo o custo total
