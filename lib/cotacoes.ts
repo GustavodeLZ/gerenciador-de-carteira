@@ -71,6 +71,62 @@ export async function ptax(iso = dataSP()): Promise<{ data: string; valor: numbe
   }
 }
 
+/**
+ * PTAX de venda de um período inteiro numa só consulta (conta 1 na cota diária).
+ * Devolve uma função que dá a PTAX de uma data (ou do último dia útil anterior).
+ */
+export async function ptaxPeriodo(ini: string, fim: string): Promise<((iso: string) => number | null) | null> {
+  if ((await reservar("ptax", 1)) < 1) return null;
+  const i = new Date(ini + "T12:00:00Z"); i.setUTCDate(i.getUTCDate() - 10);
+  const url = "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/" +
+    "CotacaoDolarPeriodo(dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)" +
+    `?@dataInicial='${mdY(i.toISOString().slice(0, 10))}'&@dataFinalCotacao='${mdY(fim)}'&$format=json&$select=cotacaoVenda,dataHoraCotacao`;
+  try {
+    const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { value?: { cotacaoVenda: number; dataHoraCotacao: string }[] };
+    const dias = new Map<string, number>();
+    for (const v of json.value ?? []) if (v.cotacaoVenda > 0) dias.set(v.dataHoraCotacao.slice(0, 10), v.cotacaoVenda);
+    const lista = [...dias.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    if (!lista.length) return null;
+    return (iso: string) => {
+      let r: number | null = null;
+      for (const [d, v] of lista) { if (d <= iso) r = v; else break; }
+      return r;
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Preenche o câmbio das operações em dólar gravadas sem PTAX (ex.: importação
+ * feita quando o Banco Central não respondeu). Opcionalmente só de um usuário.
+ */
+export async function preencherCambios(userId?: string) {
+  const admin = createAdminClient();
+  let q = admin.from("operacoes").select("id,data,ativos!inner(moeda)").is("cambio", null).eq("ativos.moeda", "USD").limit(2000);
+  if (userId) q = q.eq("user_id", userId);
+  const { data, error } = await q;
+  if (error || !data?.length) return 0;
+  const datas = data.map((o) => String(o.data)).sort();
+  const fx = await ptaxPeriodo(datas[0], datas.at(-1)!);
+  if (!fx) return 0;
+  const porValor = new Map<number, string[]>();
+  for (const o of data) {
+    const v = fx(String(o.data)); if (!v) continue;
+    porValor.set(v, [...(porValor.get(v) ?? []), o.id as string]);
+  }
+  let n = 0;
+  for (const [v, ids] of porValor) {
+    for (let i = 0; i < ids.length; i += 200) {
+      const { error: e } = await admin.from("operacoes").update({ cambio: v }).in("id", ids.slice(i, i + 200)).is("cambio", null);
+      if (!e) n += Math.min(200, ids.length - i);
+    }
+  }
+  return n;
+}
+
 /** PTAX para várias datas, com cache por chamada. */
 export async function ptaxDatas(datas: string[]) {
   const out = new Map<string, number>();

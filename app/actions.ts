@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { userForAction } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { atualizarCotacoes, ptax, ptaxDatas } from "@/lib/cotacoes";
+import { atualizarCotacoes, preencherCambios, ptax, ptaxDatas } from "@/lib/cotacoes";
 import { reservar, LIMITES } from "@/lib/limites";
 import { parseNum, temCotacaoAuto, type Moeda } from "@/lib/carteira";
 import { lerNotaPdf, NotaErro, type NotaLida } from "@/lib/notas";
@@ -238,8 +238,10 @@ export async function atualizarCotacoesAgora(): Promise<Resultado> {
   }
   try {
     const r = await atualizarCotacoes(tickers);
+    let cambios = 0;
+    try { cambios = await preencherCambios(u.userId); } catch { /* fica para a rotina diária */ }
     revalidatePath("/", "layout");
-    return { ok: `${r.ok.length} cotação(ões) atualizada(s)` + (r.falha.length ? ` · sem retorno: ${r.falha.join(", ")}` : "") +
+    return { ok: `${r.ok.length} cotação(ões) atualizada(s)` + (cambios ? ` · câmbio preenchido em ${cambios} operação(ões) em dólar` : "") + (r.falha.length ? ` · sem retorno: ${r.falha.join(", ")}` : "") +
       (r.travados.length ? ` · ${r.travados.length} não consultada(s): trava do plano gratuito atingida` : "") };
   } catch {
     return { erro: "Não foi possível buscar as cotações agora." };
