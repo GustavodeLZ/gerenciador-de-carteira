@@ -33,6 +33,9 @@ export type RendaFixaPlano = {
   ticker: string; nome: string; classe: "renda_fixa" | "tesouro";
   valorAtual: number; valorAplicado: number | null; data: string; origem: string;
 };
+/** Incorporações de FIIs/ações com relação de troca diferente de 1:1 (ajuste por fator). */
+const INCORPORACOES: Record<string, string> = { RBRF11: "RBRX11" };
+
 export type SugestaoTroca = { de: string; para: string; motivo: string };
 
 export type PlanoB3 = {
@@ -363,6 +366,12 @@ export function montarPlano(dados: ArquivosB3, escolhas: Escolhas = {}, hoje: st
       if (excesso <= 1e-6 || a.ops.some((o) => o.tipo === "desdobramento" || o.tipo === "grupamento")) continue;
       const origemT = [...ativos.values()].find((x) => x !== a && x.qtdB3 === 0 && Math.abs(x.qtdCalculada - excesso) < 1e-6 && !sugestoesTroca.some((s) => s.de === x.ticker));
       if (origemT) sugestoesTroca.push({ de: origemT.ticker, para: a.ticker, motivo: `${a.ticker} vendeu ${excesso} cotas a mais do que comprou; ${origemT.ticker} tem exatamente essa quantidade` });
+    }
+    // Incorporações conhecidas em que a relação de troca não é 1:1
+    for (const [de, para] of Object.entries(INCORPORACOES)) {
+      const o = ativos.get(de), d = ativos.get(para);
+      if (o && d && o.qtdB3 === 0 && o.qtdCalculada > 0 && d.qtdB3 > 0 && !sugestoesTroca.some((s) => s.de === de))
+        sugestoesTroca.push({ de, para, motivo: `${de} foi incorporado por ${para}` });
     }
   }
 
