@@ -5,6 +5,8 @@ import { R, P, rotulo, subRotulo, classeInfo, CLASSES } from "@/lib/carteira";
 import { salvarSegmento, excluirSegmento, vincularAtivos, desvincularAtivo, definirMetaAtivo } from "@/app/actions";
 import { ActionForm, ActionButton, MetaInput } from "@/components/forms";
 import { SeletorAtivos } from "@/components/seletor-ativos";
+import { carregarComparacao } from "@/lib/comparacao";
+import { GraficoComparacao } from "@/components/grafico-comparacao";
 import { ClasseLabel } from "@/components/ui";
 
 function FormSegmento({ s }: { s?: { id: string; nome: string; descricao: string | null; meta_pct: number | null } }) {
@@ -44,6 +46,10 @@ export default async function Segmentos({ searchParams }: { searchParams: Promis
   const fora = c.posicoes.filter((p) => !dentro.has(p.ativo.id))
     .sort((a, b) => ordemClasse(a.ativo.classe) - ordemClasse(b.ativo.classe) || rotulo(a.ativo).localeCompare(rotulo(b.ativo), "pt-BR", { numeric: true }));
   const meta = s.meta_pct == null ? null : Number(s.meta_pct);
+  const comparacao = dentro.size ? await carregarComparacao(supabase, c, dentro).catch(() => null) : null;
+  const classesSeg = new Set(r.itens.map((i) => i.posicao.ativo.classe));
+  const padraoSeg = ["CDI", ...(classesSeg.has("fii") ? ["IFIX"] : []), ...(classesSeg.has("acao") ? ["IDIV", "IBOV"] : []),
+    ...([...classesSeg].some((k) => ["exterior", "etf_exterior", "reit"].includes(k)) ? ["SP500"] : [])].slice(0, 4);
   const diffSeg = meta == null ? null : (meta / 100) * c.total - r.valor;
 
   return (
@@ -74,6 +80,8 @@ export default async function Segmentos({ searchParams }: { searchParams: Promis
               {r.valor > 0 && <div className="muted small">yield {((r.proventos12m / r.valor) * 100).toFixed(2).replace(".", ",")}%</div>}</div>
           </div>
         </div>
+
+        {comparacao && <GraficoComparacao key={s.id} dados={comparacao} titulo="Rentabilidade do segmento vs índices" nomeSerie="Segmento" padrao={padraoSeg} />}
 
         <div className="card">
           <div className="row" style={{ marginBottom: 10, flexWrap: "wrap" }}>

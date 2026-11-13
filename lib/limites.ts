@@ -11,6 +11,11 @@ export const LIMITES = {
   finnhubMin: { nome: "Finnhub (EUA) — por minuto", plano: "60 chamadas/minuto", trava: 50, periodo: "minuto" as const },
   finnhubDia: { nome: "Finnhub (EUA) — por dia", plano: "sem limite diário publicado", trava: 2_000, periodo: "dia" as const },
   ptax: { nome: "PTAX Banco Central", plano: "sem limite publicado", trava: 300, periodo: "dia" as const },
+  b3Indices: { nome: "B3 (IBOV, IDIV, IFIX)", plano: "site público da B3", trava: 40, periodo: "dia" as const },
+  fred: { nome: "FRED (S&P 500)", plano: "sem chave, uso moderado", trava: 10, periodo: "dia" as const },
+  sgs: { nome: "Banco Central (CDI, IPCA)", plano: "sem limite publicado", trava: 40, periodo: "dia" as const },
+  tiingoHora: { nome: "Tiingo (histórico EUA) — por hora", plano: "50 requisições/hora", trava: 40, periodo: "hora" as const },
+  tiingoDia: { nome: "Tiingo (histórico EUA) — por dia", plano: "1.000 requisições/dia", trava: 400, periodo: "dia" as const },
   atualizarManual: { nome: "Botão Atualizar agora", plano: "proteção contra cliques repetidos", trava: 6, periodo: "hora" as const },
 };
 export type ServicoLimitado = keyof typeof LIMITES;

@@ -76,6 +76,17 @@ export async function ptax(iso = dataSP()): Promise<{ data: string; valor: numbe
  * Devolve uma função que dá a PTAX de uma data (ou do último dia útil anterior).
  */
 export async function ptaxPeriodo(ini: string, fim: string): Promise<((iso: string) => number | null) | null> {
+  const lista = await ptaxLista(ini, fim);
+  if (!lista?.length) return null;
+  return (iso: string) => {
+    let r: number | null = null;
+    for (const [d, v] of lista) { if (d <= iso) r = v; else break; }
+    return r;
+  };
+}
+
+/** PTAX de venda diária de um período (uma consulta). */
+export async function ptaxLista(ini: string, fim: string): Promise<[string, number][] | null> {
   if ((await reservar("ptax", 1)) < 1) return null;
   const i = new Date(ini + "T12:00:00Z"); i.setUTCDate(i.getUTCDate() - 10);
   const url = "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/" +
@@ -87,13 +98,7 @@ export async function ptaxPeriodo(ini: string, fim: string): Promise<((iso: stri
     const json = (await res.json()) as { value?: { cotacaoVenda: number; dataHoraCotacao: string }[] };
     const dias = new Map<string, number>();
     for (const v of json.value ?? []) if (v.cotacaoVenda > 0) dias.set(v.dataHoraCotacao.slice(0, 10), v.cotacaoVenda);
-    const lista = [...dias.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-    if (!lista.length) return null;
-    return (iso: string) => {
-      let r: number | null = null;
-      for (const [d, v] of lista) { if (d <= iso) r = v; else break; }
-      return r;
-    };
+    return [...dias.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   } catch {
     return null;
   }

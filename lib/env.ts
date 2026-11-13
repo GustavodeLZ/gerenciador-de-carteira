@@ -11,5 +11,7 @@ export const env = {
   brapiToken: () => req("BRAPI_TOKEN", process.env.BRAPI_TOKEN),
   /** Opcional: sem ele, ações americanas ficam com o preço manual/médio. */
   finnhubToken: () => process.env.FINNHUB_TOKEN || null,
+  /** Opcional: histórico de preços dos EUA (conta grátis em tiingo.com). */
+  tiingoToken: () => process.env.TIINGO_TOKEN || null,
   cronSecret: () => req("CRON_SECRET", process.env.CRON_SECRET),
 };

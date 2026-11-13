@@ -3,6 +3,8 @@ import { requireUser } from "@/lib/auth";
 import { carregarCarteira } from "@/lib/dados";
 import { CLASSES, R, P, dataBR, classeInfo, rotulo } from "@/lib/carteira";
 import { Kpi, CarteiraVazia } from "@/components/ui";
+import { carregarComparacao } from "@/lib/comparacao";
+import { GraficoComparacao } from "@/components/grafico-comparacao";
 
 export default async function Resumo() {
   const { supabase } = await requireUser();
@@ -14,6 +16,7 @@ export default async function Resumo() {
   const classes = CLASSES.map((k) => ({ ...k, v: c.posicoes.filter((p) => p.ativo.classe === k.id).reduce((s, p) => s + p.valor, 0) }))
     .filter((k) => k.v > 0).sort((a, b) => b.v - a.v);
   const top = [...c.posicoes].sort((a, b) => b.valor - a.valor).slice(0, 8);
+  const comparacao = await carregarComparacao(supabase, c).catch(() => null);
 
   return (
     <>
@@ -23,6 +26,8 @@ export default async function Resumo() {
         <Kpi label="Resultado não realizado" valor={R(resultado)} sub={c.custo ? `${P(resultado / c.custo)} sobre o custo` : undefined} cls={resultado >= 0 ? "pos" : "neg"} />
         <Kpi label="Proventos (12 meses)" valor={R(prov12)} sub={T ? `${P(prov12 / T)} do patrimônio` : undefined} />
       </div>
+
+      {comparacao && <div style={{ marginTop: 14 }}><GraficoComparacao dados={comparacao} titulo="Rentabilidade vs índices" nomeSerie="Carteira" padrao={["CDI", "IBOV"]} /></div>}
 
       <div className="grid two" style={{ marginTop: 14 }}>
         <div className="card">
