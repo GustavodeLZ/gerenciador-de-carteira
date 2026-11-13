@@ -196,6 +196,17 @@ export async function vincularAtivo(segmentoId: string, ativoId: string): Promis
   return pronto("Ativo adicionado ao segmento");
 }
 
+export async function vincularAtivos(segmentoId: string, ativoIds: string[]): Promise<Resultado> {
+  const u = await userForAction();
+  const ids = Array.isArray(ativoIds) ? [...new Set(ativoIds)].filter((i) => uuid.safeParse(i).success).slice(0, 1000) : [];
+  if (!u || !uuid.safeParse(segmentoId).success) return { erro: "Não autorizado" };
+  if (!ids.length) return { erro: "Nenhum ativo selecionado" };
+  const { error } = await u.supabase.from("segmento_ativos")
+    .upsert(ids.map((ativo_id) => ({ segmento_id: segmentoId, ativo_id })), { onConflict: "segmento_id,ativo_id", ignoreDuplicates: true });
+  if (error) return { erro: erroBanco(error.message) };
+  return pronto(ids.length === 1 ? "Ativo adicionado ao segmento" : `${ids.length} ativos adicionados ao segmento`);
+}
+
 export async function desvincularAtivo(segmentoId: string, ativoId: string): Promise<Resultado> {
   const u = await userForAction(); if (!u || !uuid.safeParse(segmentoId).success || !uuid.safeParse(ativoId).success) return { erro: "Não autorizado" };
   const { error } = await u.supabase.from("segmento_ativos").delete().eq("segmento_id", segmentoId).eq("ativo_id", ativoId);

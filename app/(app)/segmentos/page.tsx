@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { carregarCarteira } from "@/lib/dados";
-import { R, P } from "@/lib/carteira";
-import { salvarSegmento, excluirSegmento, vincularAtivo, desvincularAtivo, definirMetaAtivo } from "@/app/actions";
-import { ActionForm, ActionButton, MetaInput, SelectAction } from "@/components/forms";
+import { R, P, rotulo, subRotulo, classeInfo, CLASSES } from "@/lib/carteira";
+import { salvarSegmento, excluirSegmento, vincularAtivos, desvincularAtivo, definirMetaAtivo } from "@/app/actions";
+import { ActionForm, ActionButton, MetaInput } from "@/components/forms";
+import { SeletorAtivos } from "@/components/seletor-ativos";
 import { ClasseLabel } from "@/components/ui";
 
 function FormSegmento({ s }: { s?: { id: string; nome: string; descricao: string | null; meta_pct: number | null } }) {
@@ -39,7 +40,9 @@ export default async function Segmentos({ searchParams }: { searchParams: Promis
   const r = c.resumoSegmentos.find((x) => x.segmento.id === sel) ?? c.resumoSegmentos[0];
   const s = r.segmento;
   const dentro = new Set(c.vinculos.filter((v) => v.segmento_id === s.id).map((v) => v.ativo_id));
-  const fora = c.posicoes.filter((p) => !dentro.has(p.ativo.id)).sort((a, b) => a.ativo.ticker.localeCompare(b.ativo.ticker));
+  const ordemClasse = (id: string) => CLASSES.findIndex((x) => x.id === id);
+  const fora = c.posicoes.filter((p) => !dentro.has(p.ativo.id))
+    .sort((a, b) => ordemClasse(a.ativo.classe) - ordemClasse(b.ativo.classe) || rotulo(a.ativo).localeCompare(rotulo(b.ativo), "pt-BR", { numeric: true }));
   const meta = s.meta_pct == null ? null : Number(s.meta_pct);
   const diffSeg = meta == null ? null : (meta / 100) * c.total - r.valor;
 
@@ -73,9 +76,12 @@ export default async function Segmentos({ searchParams }: { searchParams: Promis
         </div>
 
         <div className="card">
-          <div className="row" style={{ marginBottom: 10 }}>
+          <div className="row" style={{ marginBottom: 10, flexWrap: "wrap" }}>
             <h2 style={{ margin: 0 }}>Ativos no segmento</h2><span className="spacer" />
-            {fora.length > 0 && <SelectAction placeholder="Adicionar ativo da carteira…" opcoes={fora.map((p) => ({ v: p.ativo.id, l: p.ativo.ticker }))} run={vincularAtivo.bind(null, s.id)} />}
+            {fora.length > 0 && <SeletorAtivos key={s.id} run={vincularAtivos.bind(null, s.id)} itens={fora.map((p) => ({
+              id: p.ativo.id, rotulo: rotulo(p.ativo), sub: subRotulo(p.ativo), classe: p.ativo.classe,
+              classeNome: classeInfo(p.ativo.classe).nome, cor: classeInfo(p.ativo.classe).cor, valor: R(p.valor),
+            }))} />}
           </div>
           {r.itens.length ? (
             <>
@@ -85,7 +91,7 @@ export default async function Segmentos({ searchParams }: { searchParams: Promis
                   const d = i.meta == null ? null : i.pctSegmento - i.meta / 100;
                   return (
                     <tr key={i.posicao.ativo.id}>
-                      <td className="l"><Link className="tk" href={`/ativos/${i.posicao.ativo.id}`}>{i.posicao.ativo.ticker}</Link></td>
+                      <td className="l"><Link className="tk" href={`/ativos/${i.posicao.ativo.id}`}>{rotulo(i.posicao.ativo)}</Link>{rotulo(i.posicao.ativo) !== i.posicao.ativo.ticker && subRotulo(i.posicao.ativo) && <span className="tkname">{subRotulo(i.posicao.ativo)}</span>}</td>
                       <td className="l"><ClasseLabel id={i.posicao.ativo.classe} /></td>
                       <td>{R(i.posicao.valor)}</td>
                       <td><b>{P(i.pctSegmento)}</b></td>
@@ -104,7 +110,7 @@ export default async function Segmentos({ searchParams }: { searchParams: Promis
               </table></div>
               <p className="faint small" style={{ margin: "10px 0 0" }}>“Para atingir a meta” usa o valor atual do segmento; depois do aporte os percentuais mudam um pouco. “Remover” tira só deste segmento.</p>
             </>
-          ) : <div className="note">Nenhum ativo neste segmento ainda. Use “Adicionar ativo da carteira…”.</div>}
+          ) : <div className="note">Nenhum ativo neste segmento ainda. Use “+ Adicionar ativos”.</div>}
         </div>
       </div>
     </div>

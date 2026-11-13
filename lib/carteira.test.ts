@@ -94,3 +94,17 @@ test("compra e venda no mesmo dia: a venda não é perdida", () => {
   const r = aplicarOperacoes([op("venda", "2026-01-10", 5, 12), op("compra", "2026-01-10", 10, 10)]);
   perto(r.quantidade, 5); perto(r.lucroRealizado, 10);
 });
+
+import { nomeCurto, rotulo, subRotulo } from "./carteira.ts";
+test("nomes curtos de renda fixa", () => {
+  assert.equal(nomeCurto("CDB - Banco Daycoval - Pós-Fixado - 110.00% CDI"), "CDB Daycoval 110% CDI");
+  assert.equal(nomeCurto("CDB - Banco Inter - Pós-Fixado - 100.5% CDI"), "CDB Inter 100,5% CDI");
+  assert.equal(nomeCurto("LCI - Banco Inter - Pós-Fixado - 93.5% CDI"), "LCI Inter 93,5% CDI");
+  assert.equal(nomeCurto("CDB - BANCO INTER S/A · DI · venc. 13/12/2027"), "CDB Inter CDI · venc. 12/2027");
+  assert.equal(nomeCurto("Tesouro IPCA+ 2040 · IPCA · venc. 15/08/2040"), "Tesouro IPCA+ 2040");
+  const a = { ticker: "CDB - INTER - 100.00% CDI #2", nome: "CDB - Banco Inter - Pós-Fixado - 100.00% CDI", classe: "renda_fixa" };
+  assert.equal(rotulo(a), "CDB Inter 100% CDI");
+  assert.equal(subRotulo(a), "#2");
+  assert.equal(subRotulo({ ticker: "CDB8240JT7W", nome: "x - y - 1%", classe: "renda_fixa" }), "CDB8240JT7W");
+  assert.equal(rotulo({ ticker: "ITUB4", nome: "Itaú", classe: "acao" }), "ITUB4");
+});

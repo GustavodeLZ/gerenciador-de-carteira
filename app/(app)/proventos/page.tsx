@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { carregarCarteira } from "@/lib/dados";
-import { R, M, dataBR } from "@/lib/carteira";
+import { R, M, dataBR, rotulo, subRotulo } from "@/lib/carteira";
 import { adicionarProvento, excluirProvento } from "@/app/actions";
 import { ActionForm, ActionButton } from "@/components/forms";
 import { Kpi } from "@/components/ui";
@@ -12,7 +12,7 @@ export default async function Proventos({ searchParams }: { searchParams: Promis
   const { ativo } = await searchParams;
   const { supabase } = await requireUser();
   const c = await carregarCarteira(supabase);
-  const tick = new Map(c.ativos.map((a) => [a.id, a.ticker]));
+  const tick = new Map(c.ativos.map((a) => [a.id, rotulo(a)]));
   const moeda = new Map(c.ativos.map((a) => [a.id, a.moeda]));
   const fx = (id: string) => (moeda.get(id) === "USD" ? c.dolar ?? 1 : 1);
   const lista = [...c.proventos].sort((a, b) => b.data_pagamento.localeCompare(a.data_pagamento));
@@ -58,7 +58,7 @@ export default async function Proventos({ searchParams }: { searchParams: Promis
           <ActionForm action={adicionarProvento} className="form">
             <label className="f">Ativo<select name="ativo_id" defaultValue={ativo ?? ""} required>
               <option value="" disabled>Escolha…</option>
-              {c.ativos.map((a) => <option key={a.id} value={a.id}>{a.ticker}</option>)}
+              {c.ativos.map((a) => <option key={a.id} value={a.id}>{rotulo(a) === a.ticker ? a.ticker : `${rotulo(a)} · ${subRotulo(a) || a.ticker}`}</option>)}
             </select></label>
             <label className="f">Tipo<select name="tipo" defaultValue="dividendo">{Object.entries(NOME).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
             <label className="f">Data de pagamento<input type="date" name="data_pagamento" defaultValue={hoje} required /></label>

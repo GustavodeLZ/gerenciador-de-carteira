@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { carregarCarteira } from "@/lib/dados";
-import { CLASSES, R, P, dataBR, classeInfo } from "@/lib/carteira";
+import { CLASSES, R, P, dataBR, classeInfo, rotulo } from "@/lib/carteira";
 import { Kpi, CarteiraVazia } from "@/components/ui";
 
 export default async function Resumo() {
@@ -46,7 +46,7 @@ export default async function Resumo() {
             {top.map((p) => (
               <Frag key={p.ativo.id}>
                 <span className="sw" style={{ background: classeInfo(p.ativo.classe).cor }} />
-                <Link className="tk" href={`/ativos/${p.ativo.id}`}>{p.ativo.ticker}</Link>
+                <Link className="tk" href={`/ativos/${p.ativo.id}`}>{rotulo(p.ativo)}</Link>
                 <span className="v">{R(p.valor)}</span><span className="pct">{P(p.valor / T)}</span>
                 <div className="bar"><span style={{ width: `${(p.valor / top[0].valor) * 100}%`, background: classeInfo(p.ativo.classe).cor }} /></div>
               </Frag>

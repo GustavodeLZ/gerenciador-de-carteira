@@ -208,3 +208,33 @@ export function parseNum(s: unknown): number {
   if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
   return Number(t);
 }
+
+// ---------- nomes para exibir ----------
+const TITULOS = new Set(["renda_fixa", "tesouro"]);
+const tituloCaso = (s: string) => (s === s.toUpperCase() ? s.toLowerCase().replace(/(^|\s)\S/g, (m) => m.toUpperCase()) : s);
+const taxaCurta = (t: string) => t.replace(/(\d+)\.(\d+)\s*%/, (_, a: string, b: string) => (/^0+$/.test(b) ? a : `${a},${b.replace(/0+$/, "")}`) + "%");
+
+/** "CDB - Banco Daycoval - Pós-Fixado - 110.00% CDI" → "CDB Daycoval 110% CDI". */
+export function nomeCurto(nome: string) {
+  const [cab, ...resto] = nome.split(" · ").map((s) => s.trim());
+  if (/^tesouro/i.test(cab)) return tituloCaso(cab).replace(/^Tesouro Ipca\+/, "Tesouro IPCA+").replace(/^Tesouro Selic/, "Tesouro Selic");
+  const p = cab.split(/\s+-\s+/);
+  if (p.length < 2) return nome;
+  const tipo = p[0].toUpperCase();
+  const emissor = tituloCaso(p[1].replace(/\b(banco|bco)\b/gi, "").replace(/\bs\.?\/?a\.?$/i, "").replace(/\s+/g, " ").trim());
+  const taxa = p.slice(2).find((x) => /%|ipca|pré|pre/i.test(x));
+  const indexador = !taxa ? resto.find((r) => !/venc/i.test(r)) : undefined;
+  const venc = resto.find((r) => /venc/i.test(r))?.replace(/venc\.?\s*\d{2}\/(\d{2}\/\d{4})/i, "venc. $1");
+  return [tipo, emissor, taxa ? taxaCurta(taxa) : indexador === "DI" ? "CDI" : indexador, venc ? `· ${venc}` : ""].filter(Boolean).join(" ");
+}
+
+/** Nome principal: títulos de renda fixa e Tesouro pelo nome; o resto pelo ticker. */
+export function rotulo(a: { ticker: string; nome?: string | null; classe: string }) {
+  return TITULOS.has(a.classe) && a.nome ? nomeCurto(a.nome) : a.ticker;
+}
+/** Linha secundária: para títulos, o código da B3 (ou o nº do título sem código); para o resto, o nome. */
+export function subRotulo(a: { ticker: string; nome?: string | null; classe: string }) {
+  if (!TITULOS.has(a.classe) || !a.nome) return a.nome ?? "";
+  if (!/\s/.test(a.ticker)) return a.ticker;
+  return a.ticker.match(/#\d+$/)?.[0] ?? "";
+}

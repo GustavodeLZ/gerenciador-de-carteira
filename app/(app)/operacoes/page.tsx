@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { carregarCarteira } from "@/lib/dados";
-import { CLASSES, M, MP, Q, dataBR } from "@/lib/carteira";
+import { CLASSES, M, MP, Q, dataBR, rotulo, subRotulo } from "@/lib/carteira";
 import { adicionarOperacao, excluirOperacao } from "@/app/actions";
 import { ActionForm, ActionButton, SeletorAtivo } from "@/components/forms";
 
@@ -11,7 +11,7 @@ export default async function Operacoes({ searchParams }: { searchParams: Promis
   const { ativo, pagina } = await searchParams;
   const { supabase } = await requireUser();
   const c = await carregarCarteira(supabase);
-  const tick = new Map(c.ativos.map((a) => [a.id, a.ticker]));
+  const tick = new Map(c.ativos.map((a) => [a.id, rotulo(a)]));
   const moeda = new Map(c.ativos.map((a) => [a.id, a.moeda]));
   const ops = [...c.operacoes].sort((a, b) => b.data.localeCompare(a.data) || (b.criado_em ?? "").localeCompare(a.criado_em ?? ""));
   const pg = Math.max(1, Number(pagina) || 1), por = 50;
@@ -28,7 +28,7 @@ export default async function Operacoes({ searchParams }: { searchParams: Promis
       <div className="card" id="nova">
         <h2>Registrar operação</h2>
         <ActionForm action={adicionarOperacao} className="form">
-          <SeletorAtivo ativos={c.ativos.map((a) => ({ id: a.id, ticker: a.ticker }))} classes={CLASSES} inicial={ativo} />
+          <SeletorAtivo ativos={c.ativos.map((a) => ({ id: a.id, ticker: rotulo(a) === a.ticker ? a.ticker : `${rotulo(a)} · ${subRotulo(a) || a.ticker}` }))} classes={CLASSES} inicial={ativo} />
           <label className="f">Tipo
             <select name="tipo" defaultValue="compra">
               <option value="compra">Compra</option><option value="venda">Venda</option>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { carregarCarteira } from "@/lib/dados";
-import { CLASSES, R, M, MP, P, Q, dataBR, temCotacaoAuto } from "@/lib/carteira";
+import { CLASSES, R, M, MP, P, Q, dataBR, temCotacaoAuto, rotulo, subRotulo } from "@/lib/carteira";
 import { salvarAtivo, excluirAtivo, excluirOperacao, definirSegmentosDoAtivo } from "@/app/actions";
 import { ActionForm, ActionButton } from "@/components/forms";
 import { ClasseLabel, Kpi, sinal } from "@/components/ui";
@@ -26,7 +26,7 @@ export default async function AtivoPage({ params }: { params: Promise<{ id: stri
   return (
     <div className="grid">
       <div className="row">
-        <div><h1><span className="tk" style={{ fontSize: 20 }}>{a.ticker}</span></h1><div className="muted">{a.nome ?? ""} <ClasseLabel id={a.classe} /></div></div>
+        <div><h1><span className="tk" style={{ fontSize: 20 }}>{rotulo(a)}</span></h1><div className="muted">{rotulo(a) === a.ticker ? a.nome ?? "" : [subRotulo(a), a.nome].filter(Boolean).join(" · ")} <ClasseLabel id={a.classe} /></div></div>
         <span className="spacer" />
         <Link className="btn" href={`/operacoes?ativo=${a.id}#nova`}>+ Operação</Link>
         <Link className="btn" href={`/proventos?ativo=${a.id}#novo`}>+ Provento</Link>

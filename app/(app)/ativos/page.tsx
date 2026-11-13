@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { carregarCarteira } from "@/lib/dados";
-import { CLASSES, R, M, MP, P, Q, dataBR } from "@/lib/carteira";
+import { CLASSES, R, M, MP, P, Q, dataBR, rotulo, subRotulo } from "@/lib/carteira";
 import { ClasseLabel, CarteiraVazia, sinal } from "@/components/ui";
 
 export default async function Ativos({ searchParams }: { searchParams: Promise<{ classe?: string; seg?: string }> }) {
@@ -49,7 +49,7 @@ export default async function Ativos({ searchParams }: { searchParams: Promise<{
               const vc = valorClasse(p.ativo.classe);
               return (
                 <tr key={p.ativo.id}>
-                  <td className="l"><Link className="tk" href={`/ativos/${p.ativo.id}`}>{p.ativo.ticker}</Link>{p.ativo.nome && <span className="tkname">{p.ativo.nome}</span>}</td>
+                  <td className="l"><Link className="tk" href={`/ativos/${p.ativo.id}`}>{rotulo(p.ativo)}</Link>{subRotulo(p.ativo) && <span className="tkname">{subRotulo(p.ativo)}</span>}</td>
                   <td className="l"><ClasseLabel id={p.ativo.classe} /></td>
                   <td className="l">{segsDe(p.ativo.id).map((s) => <Link key={s!.id} className="tag" href={`/segmentos?s=${s!.id}`}>{s!.nome}</Link>)}{!segsDe(p.ativo.id).length && <span className="faint">—</span>}</td>
                   <td>{Q(p.quantidade)}</td>
