@@ -5,7 +5,7 @@ import { env } from "@/lib/env";
 import { atualizarIndices, completarHistorico } from "@/lib/historico";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 function autorizado(req: NextRequest) {
   const recebido = Buffer.from(req.headers.get("authorization") ?? "");
