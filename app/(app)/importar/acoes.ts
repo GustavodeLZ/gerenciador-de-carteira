@@ -7,10 +7,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { dataSP } from "@/lib/cotacoes";
 import { lerArquivosB3, type ArquivosB3 } from "@/lib/b3/planilha";
 import { montarPlano, type Escolhas } from "@/lib/b3/montar";
+import { lerInvestidor10, ehCsvInvestidor10 } from "@/lib/investidor10";
 
 // A Vercel limita o corpo da requisição a 4,5 MB
 const MAX_TOTAL = 4 * 1024 * 1024;
-const CLASSES = ["acao", "fii", "etf", "bdr", "renda_fixa", "tesouro", "cripto", "exterior", "outros"] as const;
+const CLASSES = ["acao", "fii", "etf", "bdr", "renda_fixa", "tesouro", "cripto", "exterior", "reit", "etf_exterior", "outros"] as const;
 const hash = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 32);
 const pedacos = <T,>(xs: T[], n: number) => Array.from({ length: Math.ceil(xs.length / n) }, (_, i) => xs.slice(i * n, i * n + n));
 
@@ -63,6 +64,26 @@ async function ajustesGravados(sb: NonNullable<Awaited<ReturnType<typeof userFor
   return out;
 }
 
+/** Posição inicial gravada pela importação do Investidor10 (origem i10:): data de corte e base por ticker. */
+async function posicaoInicial(sb: NonNullable<Awaited<ReturnType<typeof userForAction>>>["supabase"]) {
+  const { data: ops } = await sb.from("operacoes").select("ativo_id,data,quantidade,preco").like("origem", "i10:%");
+  if (!ops?.length) return { corte: undefined, base: undefined };
+  const corte = ops.reduce((m, o) => (String(o.data) > m ? String(o.data) : m), "");
+  const tick = new Map<string, string>();
+  for (const parte of pedacos([...new Set(ops.map((o) => o.ativo_id as string))], 200)) {
+    const { data } = await sb.from("ativos").select("id,ticker").in("id", parte);
+    for (const a of data ?? []) tick.set(a.id as string, a.ticker as string);
+  }
+  const base: Record<string, { qtd: number; pm: number }> = {};
+  for (const o of ops) {
+    const t = tick.get(o.ativo_id as string); if (!t) continue;
+    const b = base[t] ?? { qtd: 0, pm: 0 };
+    const q = Number(o.quantidade), pr = Number(o.preco);
+    base[t] = { qtd: b.qtd + q, pm: b.qtd + q > 0 ? (b.qtd * b.pm + q * pr) / (b.qtd + q) : 0 };
+  }
+  return { corte, base };
+}
+
 function escolhasDe(fd: FormData) {
   try { return EscolhasSchema.parse(JSON.parse(String(fd.get("escolhas") ?? "{}"))); }
   catch { return EscolhasSchema.parse({}); }
@@ -72,6 +93,7 @@ function escolhasDe(fd: FormData) {
 // Prévia (nada é gravado)
 // ---------------------------------------------------------------------
 export type PreviaB3 = {
+  corte: string | null;
   ativos: {
     ticker: string; nome: string | null; classe: string; classeConfirmada: boolean;
     compras: number; vendas: number; eventos: number; proventos: number; totalProventos: number;
@@ -94,7 +116,8 @@ export async function previaB3(fd: FormData): Promise<PreviaB3 | { erro: string 
   const lido = await lerForm(fd); if ("erro" in lido) return lido;
   const esc = escolhasDe(fd);
   const ajustesExistentes = await ajustesGravados(u.supabase);
-  const plano = montarPlano(lido.dados, { renomear: esc.renomear, precoAjuste: esc.precoAjuste, ajustesExistentes } satisfies Escolhas, dataSP());
+  const inicial = await posicaoInicial(u.supabase);
+  const plano = montarPlano(lido.dados, { renomear: esc.renomear, precoAjuste: esc.precoAjuste, ajustesExistentes, ...inicial } satisfies Escolhas, dataSP());
 
   const tickers = [...plano.ativos.map((a) => a.ticker), ...plano.rendaFixa.map((r) => r.ticker)];
   const existentes = new Map<string, { id: string; classe: string }>();
@@ -124,6 +147,7 @@ export async function previaB3(fd: FormData): Promise<PreviaB3 | { erro: string 
   }
 
   return {
+    corte: plano.corte,
     ativos: plano.ativos.map((a) => {
       const e = existentes.get(a.ticker);
       return {
@@ -156,7 +180,8 @@ export async function importarB3(fd: FormData): Promise<{ ok?: string; erro?: st
   const esc = escolhasDe(fd);
   const hoje = dataSP();
   const ajustesExistentes = await ajustesGravados(u.supabase);
-  const plano = montarPlano(lido.dados, { renomear: esc.renomear, precoAjuste: esc.precoAjuste, ajustesExistentes }, hoje);
+  const inicial = await posicaoInicial(u.supabase);
+  const plano = montarPlano(lido.dados, { renomear: esc.renomear, precoAjuste: esc.precoAjuste, ajustesExistentes, ...inicial }, hoje);
   const sb = u.supabase;
   const excluir = new Set(esc.excluir);
   const semAjuste = new Set(esc.semAjuste);
@@ -195,7 +220,9 @@ export async function importarB3(fd: FormData): Promise<{ ok?: string; erro?: st
       ops.push({ ativo_id: id, tipo: o.tipo, data: o.data, quantidade: o.quantidade, preco: o.preco, taxas: 0, origem: o.origem, nota: o.nota });
     }
   }
+  const rfNovos = new Set(novos.map((n) => n.ticker));
   for (const r of rf) {
+    if (!rfNovos.has(r.ticker)) continue; // já existe: só atualiza o preço (feito acima)
     ops.push({ ativo_id: ids.get(r.ticker)!, tipo: "compra", data: r.data, quantidade: 1, preco: r.valorAplicado ?? r.valorAtual, taxas: 0, origem: r.origem,
       nota: r.valorAplicado == null ? "B3 · Posição (a B3 não informa o valor aplicado: custo = valor atual; edite se souber)" : "B3 · Posição" });
   }
@@ -242,4 +269,106 @@ export async function importarB3(fd: FormData): Promise<{ ok?: string; erro?: st
     ok: `Importado: ${novasOps} operação(ões), ${novosProv} provento(s), ${novos.length} ativo(s) novo(s).` +
       (ja > 0 ? ` ${ja} operação(ões) já existiam e foram ignoradas.` : ""),
   };
+}
+
+// ---------------------------------------------------------------------
+// Posição inicial do Investidor10 (CSV)
+// ---------------------------------------------------------------------
+export type PreviaI10 = {
+  posicoes: { ticker: string; categoria: string; classe: string; moeda: string; quantidade: number; precoMedio: number; saldo: number;
+    observacao: string | null; existe: boolean; jaImportado: boolean }[];
+  avisos: string[];
+  ignoradas: string[];
+  corteExistente: string | null;
+};
+
+async function lerCsvI10(fd: FormData): Promise<{ texto: string } | { erro: string }> {
+  const f = fd.get("arquivo");
+  if (!(f instanceof File) || f.size === 0) return { erro: "Escolha o arquivo .csv exportado do Investidor10." };
+  if (f.size > 2 * 1024 * 1024) return { erro: "Arquivo maior que 2 MB." };
+  const texto = await f.text();
+  if (!ehCsvInvestidor10(texto)) return { erro: "Não parece a exportação de posições do Investidor10 (faltam as colunas Tipo de ativo, Preço Médio e Saldo)." };
+  return { texto };
+}
+
+export async function previaI10(fd: FormData): Promise<PreviaI10 | { erro: string }> {
+  const u = await userForAction(); if (!u) return { erro: "Sessão expirada. Entre de novo." };
+  const lido = await lerCsvI10(fd); if ("erro" in lido) return lido;
+  const r = lerInvestidor10(lido.texto);
+  if (!r.posicoes.length) return { erro: "Nenhuma posição encontrada no arquivo." };
+  const existentes = new Set<string>();
+  for (const parte of pedacos(r.posicoes.map((p) => p.ticker), 200)) {
+    const { data } = await u.supabase.from("ativos").select("ticker").in("ticker", parte);
+    for (const a of data ?? []) existentes.add(a.ticker as string);
+  }
+  const ja = new Set<string>();
+  for (const parte of pedacos(r.posicoes.map((p) => p.origem), 200)) {
+    const { data } = await u.supabase.from("operacoes").select("origem").in("origem", parte);
+    for (const o of data ?? []) ja.add(o.origem as string);
+  }
+  const { corte } = await posicaoInicial(u.supabase);
+  return {
+    posicoes: r.posicoes.map((p) => ({ ticker: p.ticker, categoria: p.categoria, classe: p.classe, moeda: p.moeda, quantidade: p.quantidade,
+      precoMedio: p.precoMedio, saldo: p.saldo, observacao: p.observacao, existe: existentes.has(p.ticker), jaImportado: ja.has(p.origem) })),
+    avisos: r.avisos, ignoradas: r.ignoradas, corteExistente: corte ?? null,
+  };
+}
+
+const I10Schema = z.object({
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  excluir: z.array(z.string().max(40)).max(2000).default([]),
+});
+
+export async function importarI10(fd: FormData): Promise<{ ok?: string; erro?: string }> {
+  const u = await userForAction(); if (!u) return { erro: "Sessão expirada. Entre de novo." };
+  const lido = await lerCsvI10(fd); if ("erro" in lido) return lido;
+  let esc: z.infer<typeof I10Schema>;
+  try { esc = I10Schema.parse(JSON.parse(String(fd.get("escolhas") ?? "{}"))); } catch { return { erro: "Informe a data da posição." }; }
+  // o Investidor10 nomeia o arquivo pela data UTC: aceita até amanhã
+  if (esc.data > dataSP(new Date(Date.now() + 86_400_000))) return { erro: "A data da posição não pode ser no futuro." };
+  const sb = u.supabase;
+  const excluir = new Set(esc.excluir);
+  const pos = lerInvestidor10(lido.texto).posicoes.filter((p) => !excluir.has(p.ticker));
+  const agora = new Date().toISOString();
+
+  // ativos
+  const ids = new Map<string, string>();
+  for (const parte of pedacos(pos.map((p) => p.ticker), 200)) {
+    const { data } = await sb.from("ativos").select("id,ticker").in("ticker", parte);
+    for (const a of data ?? []) ids.set(a.ticker as string, a.id as string);
+  }
+  const novos = pos.filter((p) => !ids.has(p.ticker)).map((p) => ({
+    ticker: p.ticker, nome: p.nome, classe: p.classe, moeda: p.moeda,
+    preco_manual: p.precoManual ? p.precoAtual : null, preco_manual_em: p.precoManual ? agora : null,
+  }));
+  for (const parte of pedacos(novos, 200)) {
+    const { data, error } = await sb.from("ativos").insert(parte).select("id,ticker");
+    if (error) return { erro: "Não foi possível criar os ativos. Tente de novo." };
+    for (const a of data ?? []) ids.set(a.ticker as string, a.id as string);
+  }
+  for (const p of pos.filter((p) => p.precoManual && novos.every((n) => n.ticker !== p.ticker))) {
+    await sb.from("ativos").update({ preco_manual: p.precoAtual, preco_manual_em: agora }).eq("id", ids.get(p.ticker)!);
+  }
+
+  // posição inicial = uma compra na data da posição, pelo preço médio
+  const ops = pos.map((p) => ({
+    ativo_id: ids.get(p.ticker)!, tipo: "compra", data: esc.data, quantidade: p.quantidade, preco: p.precoMedio, taxas: 0,
+    origem: p.origem, nota: "Posição inicial · Investidor10" + (p.observacao ? ` (${p.observacao})` : ""),
+  }));
+  let n = 0;
+  for (const parte of pedacos(ops, 500)) {
+    const { data, error } = await sb.from("operacoes").upsert(parte, { onConflict: "user_id,origem", ignoreDuplicates: true }).select("id");
+    if (error) return { erro: `Erro ao gravar (${n} gravadas até aqui). Tente de novo: as já gravadas não duplicam.` };
+    n += data?.length ?? 0;
+  }
+
+  // preço atual do arquivo como cotação inicial (dado de mercado)
+  const cot = pos.filter((p) => !p.precoManual && p.precoAtual > 0)
+    .map((p) => ({ ticker: p.moeda === "USD" ? `US:${p.ticker}` : p.ticker, data: esc.data, fechamento: p.precoAtual, atualizado_em: agora }));
+  if (cot.length) {
+    try { await createAdminClient().from("cotacoes").upsert(cot, { onConflict: "ticker,data", ignoreDuplicates: true }); } catch { /* rotina diária */ }
+  }
+
+  revalidatePath("/", "layout");
+  return { ok: `Posição inicial importada: ${n} ativo(s) em ${esc.data.split("-").reverse().join("/")}` + (ops.length - n ? ` · ${ops.length - n} já existiam` : "") + "." };
 }

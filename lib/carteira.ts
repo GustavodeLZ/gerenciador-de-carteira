@@ -1,7 +1,7 @@
 // Cálculos puros da carteira — sem acesso a banco, fáceis de testar.
 
 export type Classe =
-  | "acao" | "fii" | "etf" | "bdr" | "renda_fixa" | "tesouro" | "cripto" | "exterior" | "outros";
+  | "acao" | "fii" | "etf" | "bdr" | "renda_fixa" | "tesouro" | "cripto" | "exterior" | "reit" | "etf_exterior" | "outros";
 
 export const CLASSES: { id: Classe; nome: string; cor: string; cotacaoAuto: boolean }[] = [
   { id: "acao", nome: "Ações", cor: "var(--c1)", cotacaoAuto: true },
@@ -11,7 +11,9 @@ export const CLASSES: { id: Classe; nome: string; cor: string; cotacaoAuto: bool
   { id: "renda_fixa", nome: "Renda Fixa", cor: "var(--c5)", cotacaoAuto: false },
   { id: "tesouro", nome: "Tesouro Direto", cor: "var(--c6)", cotacaoAuto: false },
   { id: "cripto", nome: "Cripto", cor: "var(--c7)", cotacaoAuto: false },
-  { id: "exterior", nome: "Exterior", cor: "var(--c8)", cotacaoAuto: false },
+  { id: "exterior", nome: "Stocks (EUA)", cor: "var(--c8)", cotacaoAuto: false },
+  { id: "reit", nome: "REITs", cor: "var(--c8)", cotacaoAuto: false },
+  { id: "etf_exterior", nome: "ETFs internacionais", cor: "var(--c3)", cotacaoAuto: false },
   { id: "outros", nome: "Outros", cor: "var(--c9)", cotacaoAuto: false },
 ];
 export const classeInfo = (id: string) => CLASSES.find((c) => c.id === id) ?? CLASSES[CLASSES.length - 1];
@@ -24,7 +26,7 @@ export type Ativo = {
 
 /** Ativos com cotação automática: bolsa brasileira (brapi) ou americana (Finnhub). */
 export function temCotacaoAuto(a: Pick<Ativo, "classe" | "moeda">) {
-  return a.moeda === "USD" ? ["acao", "etf", "exterior"].includes(a.classe) : classeInfo(a.classe).cotacaoAuto;
+  return a.moeda === "USD" ? ["acao", "etf", "exterior", "reit", "etf_exterior"].includes(a.classe) : classeInfo(a.classe).cotacaoAuto;
 }
 /** Chave do ativo na tabela de cotações. */
 export const chaveCotacao = (a: Pick<Ativo, "ticker" | "moeda">) => (a.moeda === "USD" ? `US:${a.ticker}` : a.ticker);

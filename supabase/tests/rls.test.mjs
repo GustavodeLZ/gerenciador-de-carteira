@@ -11,7 +11,7 @@ create function auth.jwt() returns jsonb language sql stable as $$ select jsonb_
 grant usage on schema public, auth to anon, authenticated, service_role;
 grant execute on all functions in schema auth to authenticated, anon;
 `);
-for (const f of ["0001_init.sql","0002_moeda_e_notas.sql","0003_importacao_b3.sql"]) await db.exec(fs.readFileSync(new URL("../migrations/"+f, import.meta.url),"utf8"));
+for (const f of ["0001_init.sql","0002_moeda_e_notas.sql","0003_importacao_b3.sql","0004_classes_exterior.sql","0005_cotacao_exterior.sql"]) await db.exec(fs.readFileSync(new URL("../migrations/"+f, import.meta.url),"utf8"));
 // Sem permissões automáticas: simula "Automatically expose new tables" DESLIGADO.
 // Tudo o que funciona aqui vem dos GRANTs explícitos das migrações.
 const ok=(m)=>console.log("OK  ",m), bad=(m)=>{console.log("FAIL",m);process.exitCode=1};
@@ -77,3 +77,15 @@ r=await as(u1,'aal2',`insert into proventos(ativo_id,tipo,data_pagamento,valor_t
 r.rows.length===0?ok("mesmo provento da B3 não é importado duas vezes"):bad("duplicou provento");
 await as(u1,'aal2',`insert into proventos(ativo_id,tipo,data_pagamento,valor_total) values($1,'dividendo','2026-11-10',1),($1,'dividendo','2026-11-10',1)`,[a1]);
 ok("proventos manuais (sem origem) não conflitam");
+
+// 0004/0005: classes do exterior
+const reit=(await as(u1,'aal2',`insert into ativos(ticker,classe,moeda) values('SPG','reit','USD') returning id`)).rows[0].id;
+await as(u1,'aal2',`insert into ativos(ticker,classe,moeda) values('VOO','etf_exterior','USD')`);
+ok("aceita classes reit e etf_exterior");
+await db.exec(`set role service_role`); r=await db.query(`select ticker from tickers_para_cotar()`); await db.exec(`reset role`);
+(r.rows.some(x=>x.ticker==='SPG') && r.rows.some(x=>x.ticker==='VOO'))?ok("rotina diária cota REITs e ETFs internacionais"):bad("tickers exterior "+JSON.stringify(r.rows));
+// apagar carteira: só os próprios dados
+const antes=(await as(u2,'aal2',`select count(*)::int n from ativos`)).rows[0].n;
+await as(u1,'aal2',`delete from ativos where user_id=$1`,[u1]);
+r=await as(u1,'aal2',`select count(*)::int n from operacoes`); r.rows[0].n===0?ok("apagar carteira remove operações (cascata)"):bad("sobrou operação");
+r=await as(u2,'aal2',`select count(*)::int n from ativos`); r.rows[0].n===antes?ok("apagar não afeta outro usuário"):bad("apagou dados de outro usuário");

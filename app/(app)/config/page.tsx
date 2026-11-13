@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { carregarCarteira } from "@/lib/dados";
 import { dataBR, temCotacaoAuto } from "@/lib/carteira";
-import { atualizarCotacoesAgora, importarBackup, sair } from "@/app/actions";
+import { atualizarCotacoesAgora, importarBackup, sair, apagarCarteira } from "@/app/actions";
 import { ActionForm, ActionButton } from "@/components/forms";
 
 export default async function Config() {
@@ -27,6 +27,17 @@ export default async function Config() {
           <h2>Conta</h2>
           <p className="muted" style={{ marginTop: 0 }}>Conectado como <b>{u.user?.email}</b> com verificação em duas etapas.</p>
           <form action={sair}><button className="btn">Sair</button></form>
+        </div>
+        <div className="card" id="apagar">
+          <h2>Apagar dados da carteira</h2>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Remove todos os ativos, operações e proventos ({c.ativos.length} ativo(s), {c.operacoes.length} operação(ões)). Os segmentos ficam, vazios.
+            Use para recomeçar a partir de uma posição inicial. <b>Não dá para desfazer.</b>
+          </p>
+          <ActionForm action={apagarCarteira} className="row">
+            <input type="text" name="confirmacao" placeholder="digite APAGAR" autoComplete="off" style={{ width: 180 }} aria-label="Confirmação" />
+            <button className="btn danger">Apagar tudo</button>
+          </ActionForm>
         </div>
       </div>
       <div className="card" id="importar" style={{ alignSelf: "start" }}>

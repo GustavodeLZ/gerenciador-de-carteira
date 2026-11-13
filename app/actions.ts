@@ -11,7 +11,7 @@ import { lerNotaPdf, NotaErro, type NotaLida } from "@/lib/notas";
 export type Resultado = { ok?: string; erro?: string } | null;
 
 const MOEDAS = ["BRL", "USD"] as const;
-const CLASSES = ["acao", "fii", "etf", "bdr", "renda_fixa", "tesouro", "cripto", "exterior", "outros"] as const;
+const CLASSES = ["acao", "fii", "etf", "bdr", "renda_fixa", "tesouro", "cripto", "exterior", "reit", "etf_exterior", "outros"] as const;
 const TIPOS_OP = ["compra", "venda", "desdobramento", "grupamento", "bonificacao"] as const;
 const TIPOS_PROV = ["dividendo", "jcp", "rendimento", "juros", "outro"] as const;
 
@@ -405,4 +405,13 @@ export async function importarNota(payload: unknown): Promise<Resultado> {
     `${n} operação(ões) importada(s)` + (dup ? ` · ${dup} já existia(m)` : "") + (novos.length ? ` · ${novos.length} ativo(s) novo(s)` : "") +
     (semCambio ? " · PTAX indisponível em alguma data: usando o dólar atual" : ""),
   );
+}
+
+/** Apaga ativos, operações, proventos e vínculos de segmento do usuário (segmentos ficam). */
+export async function apagarCarteira(_: Resultado, fd: FormData): Promise<Resultado> {
+  const u = await userForAction(); if (!u) return { erro: "Sessão expirada. Entre de novo." };
+  if (String(fd.get("confirmacao") ?? "").trim() !== "APAGAR") return { erro: "Digite APAGAR para confirmar." };
+  const { error } = await u.supabase.from("ativos").delete().eq("user_id", u.userId);
+  if (error) return { erro: "Não foi possível apagar. Tente de novo." };
+  return pronto("Carteira apagada. Segmentos foram mantidos (vazios).");
 }

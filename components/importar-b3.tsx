@@ -136,6 +136,12 @@ export function ImportarB3({ classes }: { classes: Classe[] }) {
               <div className="muted small">{R(rendaFixa ? previa.rendaFixa.reduce((s, r) => s + r.valorAtual, 0) : 0)}</div></div>
           </div>
 
+          {previa.corte && (
+            <div className="note" style={{ marginBottom: 12 }}>
+              Posição inicial em <b>{previa.corte.split("-").reverse().join("/")}</b>: só entram operações <b>depois</b> dessa data.
+              Proventos entram de todo o período. A conferência com a B3 já soma a posição inicial.
+            </div>
+          )}
           {previa.desconhecidos.length > 0 && <p className="msg err">Não reconhecidos: {previa.desconhecidos.join(", ")}</p>}
 
           {previa.sugestoesTroca.length > 0 && (

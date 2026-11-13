@@ -36,6 +36,8 @@ export type RendaFixaPlano = {
 export type SugestaoTroca = { de: string; para: string; motivo: string };
 
 export type PlanoB3 = {
+  /** data da posição inicial usada como corte, se houver */
+  corte: string | null;
   ativos: AtivoPlano[];
   rendaFixa: RendaFixaPlano[];
   sugestoesTroca: SugestaoTroca[];
@@ -52,6 +54,12 @@ export type Escolhas = {
   precoAjuste?: Record<string, number>;
   /** quantidade líquida de ajustes já gravados em importações anteriores, por ticker */
   ajustesExistentes?: Record<string, number>;
+  /**
+   * Posição inicial já gravada (ex.: importada do Investidor10) e sua data.
+   * Operações até essa data são ignoradas; proventos entram todos.
+   */
+  corte?: string;
+  base?: Record<string, { qtd: number; pm: number }>;
 };
 
 // =====================================================================
@@ -233,6 +241,13 @@ export function montarPlano(dados: ArquivosB3, escolhas: Escolhas = {}, hoje: st
     }
   }
 
+  // ---------- data de corte (posição inicial já gravada) ----------
+  if (escolhas.corte) {
+    const antes = brutos.filter((b) => b.op && b.op.data <= escolhas.corte!).length;
+    if (antes) ignorados[`Operações até ${escolhas.corte.split("-").reverse().join("/")} (já na posição inicial)`] = antes;
+    for (let i = brutos.length - 1; i >= 0; i--) if (brutos[i].op && brutos[i].op!.data <= escolhas.corte) brutos.splice(i, 1);
+  }
+
   // ---------- trocas de código ----------
   const ren = escolhas.renomear ?? {};
   const destino = (t: string) => { let x = t; const vis = new Set<string>(); while (ren[x] && !vis.has(x)) { vis.add(x); x = ren[x]; } return x; };
@@ -250,6 +265,7 @@ export function montarPlano(dados: ArquivosB3, escolhas: Escolhas = {}, hoje: st
     return a;
   };
   for (const t of pos.keys()) pegar(t);
+  for (const t of Object.keys(escolhas.base ?? {})) if (pos.has(t) || !dados.posicao.length) pegar(t);
   for (const b of brutos) {
     const final = destino(b.ticker);
     const a = pegar(final);
@@ -260,7 +276,11 @@ export function montarPlano(dados: ArquivosB3, escolhas: Escolhas = {}, hoje: st
 
   // ---------- quantidades e ajustes ----------
   for (const a of ativos.values()) {
-    const r = aplicarOperacoes(a.ops.map((o, i) => ({ ...o, id: String(i), ativo_id: a.ticker, taxas: 0, criado_em: String(i).padStart(6, "0") }) as Operacao));
+    const b = escolhas.base?.[a.ticker];
+    const baseOp = b && b.qtd > 0 && escolhas.corte
+      ? [{ id: "base", ativo_id: a.ticker, tipo: "compra", data: escolhas.corte, quantidade: b.qtd, preco: b.pm, taxas: 0, criado_em: "000000" } as Operacao]
+      : [];
+    const r = aplicarOperacoes([...baseOp, ...a.ops.map((o, i) => ({ ...o, id: String(i), ativo_id: a.ticker, taxas: 0, criado_em: String(i + 1).padStart(6, "0") }) as Operacao)]);
     a.qtdCalculada = Math.round(r.quantidade * 1e8) / 1e8;
     a.precoMedio = r.precoMedio;
     const ja = escolhas.ajustesExistentes?.[a.ticker] ?? 0;
@@ -308,7 +328,8 @@ export function montarPlano(dados: ArquivosB3, escolhas: Escolhas = {}, hoje: st
   if (!dados.posicao.length) avisos.push("Sem o relatório de Posição, não dá para conferir as quantidades nem importar renda fixa e Tesouro.");
 
   return {
-    ativos: [...ativos.values()].filter((a) => a.ops.length || a.proventos.length || a.qtdB3 > 0).sort((x, y) => x.ticker.localeCompare(y.ticker)),
+    corte: escolhas.corte ?? null,
+    ativos: [...ativos.values()].filter((a) => a.ops.length || a.proventos.length || a.qtdB3 > 0 || a.ajuste).sort((x, y) => x.ticker.localeCompare(y.ticker)),
     rendaFixa,
     sugestoesTroca,
     ignorados,

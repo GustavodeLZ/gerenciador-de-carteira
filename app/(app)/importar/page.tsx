@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { carregarCarteira } from "@/lib/dados";
 import { CLASSES } from "@/lib/carteira";
 import { ImportarB3 } from "@/components/importar-b3";
+import { ImportarI10 } from "@/components/importar-i10";
 import { NotaUpload } from "@/components/nota-upload";
 
 export default async function Importar() {
@@ -9,6 +10,7 @@ export default async function Importar() {
   const c = await carregarCarteira(supabase);
   return (
     <div className="grid">
+      <ImportarI10 nomesClasse={Object.fromEntries(CLASSES.map((c) => [c.id, c.nome]))} />
       <ImportarB3 classes={CLASSES} />
       <NotaUpload classes={CLASSES} segmentos={c.segmentos.map((s) => ({ id: s.id, nome: s.nome }))} />
       <p className="faint small" style={{ margin: 0 }}>

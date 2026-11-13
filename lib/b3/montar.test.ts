@@ -160,3 +160,18 @@ test("incorporação com proporção ≠ 1:1 ajusta por fator e mantém o custo 
   assert.equal(n.ajuste?.tipo, "grupamento");
   assert.ok(Math.abs(n.ajuste!.quantidade - 30 / 24) < 1e-9);
 });
+
+test("com posição inicial: só operações depois do corte, proventos todos, conferência soma a base", () => {
+  const d = dados();
+  d.negociacao.push(neg("05/01/2026", "Compra", "Mercado à Vista", "AAAA3", 4, 20)); // depois do corte
+  d.posicao[0].linhas = d.posicao[0].linhas.map((l) => (l["Código de Negociação"] === "AAAA3" ? posRV("AAAA3", 115, 11) : l));
+  const p = montarPlano(d, { corte: "2025-12-31", base: { AAAA3: { qtd: 111, pm: 9 }, FUND11: { qtd: 12, pm: 99 }, NEWX3: { qtd: 30, pm: 20 }, ZZZZ3: { qtd: 7, pm: 40 } } }, HOJE);
+  const a = ativo(p, "AAAA3");
+  assert.equal(a.ops.length, 1, "só a compra de 2026");
+  assert.equal(a.qtdCalculada, 115);
+  assert.equal(a.ajuste, null);
+  assert.equal(a.proventos.length, 1, "proventos anteriores ao corte continuam");
+  assert.equal(ativo(p, "ZZZZ3").ajuste, null, "base cobre o que antes precisava de ajuste");
+  assert.ok(Object.keys(p.ignorados).some((k) => k.startsWith("Operações até 31/12/2025")));
+  assert.equal(p.corte, "2025-12-31");
+});
