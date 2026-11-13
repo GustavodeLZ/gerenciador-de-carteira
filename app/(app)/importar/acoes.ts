@@ -441,6 +441,7 @@ export async function previaEUA(fd: FormData): Promise<PreviaEUA | { erro: strin
     const { data } = await u.supabase.from("ativos").select("ticker").in("ticker", parte);
     for (const a of data ?? []) existentes.add(a.ticker as string);
   }
+  if (!r.temMyProfit) r.plano.avisos.unshift("Sem o Relatório Histórico do myProfit: cada ativo entra com uma única compra na data do extrato, pelo custo do extrato — sem o histórico de compras, e todos como “Stocks (EUA)”. Inclua o .xlsx do myProfit para trazer o histórico completo.");
   return {
     ...r.plano, desconhecidos: r.desconhecidos, extratos: r.extratos, temMyProfit: r.temMyProfit,
     ativos: r.plano.ativos.map(({ ops, ...a }) => ({ ...a, compras: ops.filter((o) => o.tipo === "compra").length, vendas: ops.filter((o) => o.tipo === "venda").length, existe: existentes.has(a.ticker) })),
