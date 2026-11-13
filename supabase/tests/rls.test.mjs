@@ -11,7 +11,7 @@ create function auth.jwt() returns jsonb language sql stable as $$ select jsonb_
 grant usage on schema public, auth to anon, authenticated, service_role;
 grant execute on all functions in schema auth to authenticated, anon;
 `);
-for (const f of ["0001_init.sql","0002_moeda_e_notas.sql","0003_importacao_b3.sql","0004_classes_exterior.sql","0005_cotacao_exterior.sql"]) await db.exec(fs.readFileSync(new URL("../migrations/"+f, import.meta.url),"utf8"));
+for (const f of ["0001_init.sql","0002_moeda_e_notas.sql","0003_importacao_b3.sql","0004_classes_exterior.sql","0005_cotacao_exterior.sql","0006_limites_uso.sql","0007_fechar_funcoes_expostas.sql"]) await db.exec(fs.readFileSync(new URL("../migrations/"+f, import.meta.url),"utf8"));
 // Sem permissões automáticas: simula "Automatically expose new tables" DESLIGADO.
 // Tudo o que funciona aqui vem dos GRANTs explícitos das migrações.
 const ok=(m)=>console.log("OK  ",m), bad=(m)=>{console.log("FAIL",m);process.exitCode=1};
@@ -89,3 +89,20 @@ const antes=(await as(u2,'aal2',`select count(*)::int n from ativos`)).rows[0].n
 await as(u1,'aal2',`delete from ativos where user_id=$1`,[u1]);
 r=await as(u1,'aal2',`select count(*)::int n from operacoes`); r.rows[0].n===0?ok("apagar carteira remove operações (cascata)"):bad("sobrou operação");
 r=await as(u2,'aal2',`select count(*)::int n from ativos`); r.rows[0].n===antes?ok("apagar não afeta outro usuário"):bad("apagou dados de outro usuário");
+
+// 0006: travas de uso
+await db.exec(`set role service_role`);
+let c1=(await db.query(`select public.consumir_cota('brapi','2026-11',8,10) c`)).rows[0].c;
+let c2=(await db.query(`select public.consumir_cota('brapi','2026-11',8,10) c`)).rows[0].c;
+let c3=(await db.query(`select public.consumir_cota('brapi','2026-11',1,10) c`)).rows[0].c;
+let row=(await db.query(`select contagem,bloqueado from uso_servicos where servico='brapi'`)).rows[0];
+await db.exec(`reset role`);
+(c1===8&&c2===2&&c3===0&&row.contagem===10&&row.bloqueado===7)?ok("trava de cota nunca passa do limite e registra o bloqueado"):bad(`cota ${c1},${c2},${c3} ${JSON.stringify(row)}`);
+try{ await as(u1,'aal2',`select public.consumir_cota('brapi','2026-11',1,999999)`); bad("usuário burlou a cota"); }catch{ ok("usuário não consegue mexer na cota"); }
+try{ await as(u1,'aal2',`update uso_servicos set contagem=0`); r=await as(u1,'aal2',`select contagem from uso_servicos where servico='brapi'`); r.rows[0]?.contagem===10?ok("usuário não zera o contador"):bad("zerou contador"); }catch{ ok("usuário não zera o contador"); }
+r=await as(u1,'aal2',`select contagem from uso_servicos`); r.rows.length===1?ok("uso visível com 2FA"):bad("uso invisível");
+r=await as(u1,'aal1',`select * from uso_servicos`); r.rows.length===0?ok("uso exige 2FA"):bad("uso sem 2FA");
+
+try{ await as(u1,'aal2',`select public.tamanho_banco()`); bad("usuário chama tamanho_banco"); }catch{ ok("tamanho_banco só pelo servidor"); }
+await db.exec(`insert into public.emails_permitidos values ('novo@x.com')`);
+await db.exec(`insert into auth.users(email) values ('novo@x.com')`); ok("gatilho da allowlist funciona sem permissão de execução para usuários");

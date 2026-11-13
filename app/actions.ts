@@ -5,6 +5,7 @@ import { z } from "zod";
 import { userForAction } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { atualizarCotacoes, ptax, ptaxDatas } from "@/lib/cotacoes";
+import { reservar, LIMITES } from "@/lib/limites";
 import { parseNum, temCotacaoAuto, type Moeda } from "@/lib/carteira";
 import { lerNotaPdf, NotaErro, type NotaLida } from "@/lib/notas";
 
@@ -232,10 +233,14 @@ export async function atualizarCotacoesAgora(): Promise<Resultado> {
   const { data } = await u.supabase.from("ativos").select("ticker,classe,moeda");
   const tickers = (data ?? []).filter((a) => temCotacaoAuto(a)).map((a) => ({ ticker: a.ticker as string, moeda: a.moeda as Moeda }));
   if (!tickers.length) return { ok: "Nenhum ativo com cotação automática" };
+  if ((await reservar("atualizarManual", 1)) < 1) {
+    return { erro: `Limite de ${LIMITES.atualizarManual.trava} atualizações manuais por hora atingido (protege a cota gratuita da brapi). A rotina diária continua normal.` };
+  }
   try {
     const r = await atualizarCotacoes(tickers);
     revalidatePath("/", "layout");
-    return { ok: `${r.ok.length} cotação(ões) atualizada(s)` + (r.falha.length ? ` · sem retorno: ${r.falha.join(", ")}` : "") };
+    return { ok: `${r.ok.length} cotação(ões) atualizada(s)` + (r.falha.length ? ` · sem retorno: ${r.falha.join(", ")}` : "") +
+      (r.travados.length ? ` · ${r.travados.length} não consultada(s): trava do plano gratuito atingida` : "") };
   } catch {
     return { erro: "Não foi possível buscar as cotações agora." };
   }

@@ -68,6 +68,21 @@ No Supabase, *Authentication → URL Configuration*:
 
 ---
 
+## Limites dos planos gratuitos (travas)
+
+O app conta o uso de cada serviço externo no banco (`uso_servicos`) e para de chamar antes do limite:
+
+| Serviço | Plano gratuito | Trava do app |
+|---|---|---|
+| brapi | 15.000 req/mês | 12.000/mês |
+| Finnhub | 60/min | 50/min e 2.000/dia |
+| PTAX (Banco Central) | sem limite publicado | 300/dia |
+| Botão "Atualizar agora" | — | 6/hora |
+| Supabase (banco) | 500 MB | aviso em 70%, importações bloqueadas em 90% |
+
+Painel em *Ajustes → Limites* e aviso no topo do app a partir de 80%.
+Vercel Hobby, Supabase Free, brapi e Finnhub gratuitos **não cobram** sem cartão cadastrado: ao estourar, o serviço só para até o próximo período.
+
 ## Segurança — o que já está ativo
 
 - **Isolamento no banco (RLS):** cada linha tem dono; o banco só entrega dados do próprio usuário **e só se a sessão passou pelo 2FA** (`aal2`). Sem 2FA, as consultas voltam vazias, mesmo que o site tenha bug.
@@ -76,7 +91,7 @@ No Supabase, *Authentication → URL Configuration*:
 - **Cotações separadas da carteira:** a tabela de preços não tem nenhum dado pessoal.
 - **Cabeçalhos de segurança:** CSP, HSTS, bloqueio de iframe, sem indexação em buscadores.
 - **Rotina diária protegida** por `CRON_SECRET`.
-- **Testes:** `npm test` (cálculos, leitor de notas e importação da B3) e `npm run test:db` (29 verificações de RLS, permissões e duplicidade).
+- **Testes:** `npm test` (cálculos, leitor de notas e importação da B3) e `npm run test:db` (40 verificações de RLS, permissões e duplicidade).
 
 ### Recomendações
 - Use um gerenciador de senhas e ative 2FA também no GitHub, Supabase e Vercel pessoais.

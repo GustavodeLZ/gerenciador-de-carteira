@@ -2,6 +2,7 @@ import "server-only";
 import { env } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CHAVE_DOLAR, type Moeda } from "@/lib/carteira";
+import { reservar } from "@/lib/limites";
 
 const TICKER_B3 = /^[A-Z0-9]{4,7}$/;
 const TICKER_US = /^[A-Z][A-Z0-9.\-]{0,9}$/;
@@ -52,6 +53,7 @@ const mdY = (iso: string) => { const [y, m, d] = iso.split("-"); return `${m}-${
  * (fim de semana/feriado), do último dia útil anterior.
  */
 export async function ptax(iso = dataSP()): Promise<{ data: string; valor: number } | null> {
+  if ((await reservar("ptax", 1)) < 1) return null; // trava diária
   const fim = new Date(iso + "T12:00:00Z");
   const ini = new Date(fim); ini.setUTCDate(ini.getUTCDate() - 10);
   const url = "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/" +
@@ -106,9 +108,17 @@ export async function atualizarCotacoes(lista?: { ticker: string; moeda: Moeda }
       });
     }
   };
-  await lote(br, brapi, 3);
-  if (us.length && env.finnhubToken()) await lote(us, finnhub, 5);
-  else falha.push(...us);
+  // Travas: só chama o serviço externo para a quantidade liberada pela cota
+  const travados: string[] = [];
+  const okBr = await reservar("brapi", br.length);
+  travados.push(...br.slice(okBr));
+  await lote(br.slice(0, okBr), brapi, 3);
+  if (us.length && env.finnhubToken()) {
+    const okDia = await reservar("finnhubDia", us.length);
+    const okMin = okDia ? await reservar("finnhubMin", okDia) : 0;
+    travados.push(...us.slice(okMin));
+    await lote(us.slice(0, okMin), finnhub, 5);
+  } else falha.push(...us);
 
   if (us.length || itens.length === 0 || !lista) {
     const fx = await ptax();
@@ -118,5 +128,5 @@ export async function atualizarCotacoes(lista?: { ticker: string; moeda: Moeda }
     const { error } = await admin.from("cotacoes").upsert(linhas, { onConflict: "ticker,data" });
     if (error) throw new Error(error.message);
   }
-  return { ok, falha };
+  return { ok, falha, travados };
 }

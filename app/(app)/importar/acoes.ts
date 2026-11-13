@@ -5,6 +5,7 @@ import { z } from "zod";
 import { userForAction } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { dataSP } from "@/lib/cotacoes";
+import { bancoCheio } from "@/lib/limites";
 import { lerArquivosB3, type ArquivosB3 } from "@/lib/b3/planilha";
 import { montarPlano, type Escolhas } from "@/lib/b3/montar";
 import { lerInvestidor10, ehCsvInvestidor10 } from "@/lib/investidor10";
@@ -176,6 +177,7 @@ export async function previaB3(fd: FormData): Promise<PreviaB3 | { erro: string 
 // ---------------------------------------------------------------------
 export async function importarB3(fd: FormData): Promise<{ ok?: string; erro?: string }> {
   const u = await userForAction(); if (!u) return { erro: "Sessão expirada. Entre de novo." };
+  if (await bancoCheio()) return { erro: "Banco de dados acima de 90% do limite gratuito (500 MB). Importação bloqueada para não estourar o plano. Veja Ajustes → Limites." };
   const lido = await lerForm(fd); if ("erro" in lido) return lido;
   const esc = escolhasDe(fd);
   const hoje = dataSP();
@@ -321,6 +323,7 @@ const I10Schema = z.object({
 
 export async function importarI10(fd: FormData): Promise<{ ok?: string; erro?: string }> {
   const u = await userForAction(); if (!u) return { erro: "Sessão expirada. Entre de novo." };
+  if (await bancoCheio()) return { erro: "Banco de dados acima de 90% do limite gratuito (500 MB). Importação bloqueada para não estourar o plano. Veja Ajustes → Limites." };
   const lido = await lerCsvI10(fd); if ("erro" in lido) return lido;
   let esc: z.infer<typeof I10Schema>;
   try { esc = I10Schema.parse(JSON.parse(String(fd.get("escolhas") ?? "{}"))); } catch { return { erro: "Informe a data da posição." }; }

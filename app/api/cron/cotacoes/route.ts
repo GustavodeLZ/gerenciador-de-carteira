@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   if (!autorizado(req)) return NextResponse.json({ erro: "não autorizado" }, { status: 401 });
   try {
     const r = await atualizarCotacoes();
-    return NextResponse.json({ atualizadas: r.ok.length, falharam: r.falha });
+    return NextResponse.json({ atualizadas: r.ok.length, falharam: r.falha, travadas: r.travados });
   } catch {
     return NextResponse.json({ erro: "falha ao atualizar" }, { status: 500 });
   }
